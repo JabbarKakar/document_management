@@ -48,6 +48,9 @@ dependencies:
   # Biometric authentication
   local_auth: ^3.0.1
 
+  # PIN hashing (secure storage)
+  crypto: ^3.0.3
+
   # Local notifications
   flutter_local_notifications: ^21.0.0
 

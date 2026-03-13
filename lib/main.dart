@@ -1,10 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import 'core/auth/auth_manager.dart';
 import 'core/init/app_init_result.dart';
 import 'core/init/app_initializer.dart';
 import 'core/providers/app_init_provider.dart';
 import 'core/services/encrypted_file_storage_service.dart';
+import 'features/auth/presentation/providers/auth_state_provider.dart';
+import 'features/auth/presentation/screens/create_pin_screen.dart';
+import 'features/auth/presentation/screens/lock_screen.dart';
 import 'features/documents/data/repositories/isar_document_repository.dart';
 import 'features/documents/presentation/providers/document_list_provider.dart';
 import 'features/documents/presentation/screens/documents_home_screen.dart';
@@ -99,7 +103,7 @@ class _AppInitGateState extends State<_AppInitGate> {
         final vaultPath = result.appDocumentsPath;
         final fileStorage = EncryptedFileStorageService(vaultPath);
 
-        return MultiProvider(
+        final mainContent = MultiProvider(
           providers: [
             ChangeNotifierProvider<DocumentListProvider>(
               create: (_) => DocumentListProvider(
@@ -117,7 +121,59 @@ class _AppInitGateState extends State<_AppInitGate> {
           ],
           child: const DocumentsHomeScreen(),
         );
+
+        return ChangeNotifierProvider<AuthStateProvider>(
+          create: (_) {
+            final authManager = AuthManager();
+            final p = AuthStateProvider(authManager: authManager);
+            p.init();
+            return p;
+          },
+          child: _AuthGate(mainContent: mainContent),
+        );
     }
+  }
+}
+
+class _AuthGate extends StatefulWidget {
+  const _AuthGate({required this.mainContent});
+
+  final Widget mainContent;
+
+  @override
+  State<_AuthGate> createState() => _AuthGateState();
+}
+
+class _AuthGateState extends State<_AuthGate> {
+  AuthStateProvider? _authProvider;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_authProvider == null) {
+      _authProvider = context.read<AuthStateProvider>();
+      WidgetsBinding.instance.addObserver(_authProvider!);
+    }
+  }
+
+  @override
+  void dispose() {
+    if (_authProvider != null) {
+      WidgetsBinding.instance.removeObserver(_authProvider!);
+    }
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final auth = context.watch<AuthStateProvider>();
+    if (auth.needsPinSetup) {
+      return const CreatePinScreen();
+    }
+    if (auth.isLocked) {
+      return const LockScreen();
+    }
+    return widget.mainContent;
   }
 }
 

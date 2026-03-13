@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../../../auth/presentation/providers/auth_state_provider.dart';
 import '../../../categories/presentation/providers/category_list_provider.dart';
 import '../providers/document_list_provider.dart';
 import 'document_viewer_screen.dart';
@@ -17,6 +18,13 @@ class DocumentsHomeScreen extends StatelessWidget {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Your Documents'),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.lock_outline),
+            tooltip: 'Lock vault',
+            onPressed: () => context.read<AuthStateProvider>().lock(),
+          ),
+        ],
         bottom: PreferredSize(
           preferredSize: const Size.fromHeight(72),
           child: Padding(
