@@ -40,12 +40,31 @@ class AuthManager {
 
   Future<bool> canUseBiometrics() => _authInitializer.canCheckBiometrics();
 
-  Future<bool> authenticateWithBiometrics() async {
+  /// True when device supports biometrics and at least one is enrolled.
+  Future<bool> hasEnrolledBiometrics() async {
     try {
-      return await _authInitializer.localAuth.authenticate(
+      final list = await _authInitializer.localAuth.getAvailableBiometrics();
+      return list.isNotEmpty;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// Returns true if authenticated, false if failed, null if user cancelled.
+  Future<bool?> authenticateWithBiometrics() async {
+    try {
+      final ok = await _authInitializer.localAuth.authenticate(
         localizedReason: 'Unlock your document vault',
         persistAcrossBackgrounding: false,
       );
+      return ok;
+    } on LocalAuthException catch (e) {
+      if (e.code == LocalAuthExceptionCode.userCanceled ||
+          e.code == LocalAuthExceptionCode.systemCanceled ||
+          e.code == LocalAuthExceptionCode.timeout) {
+        return null;
+      }
+      return false;
     } catch (_) {
       return false;
     }

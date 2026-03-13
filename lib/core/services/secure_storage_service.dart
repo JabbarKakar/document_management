@@ -14,6 +14,7 @@ class SecureStorageService {
   static const String _firstLaunchKey = 'has_run_before';
   static const String _pinHashKey = 'pin_hash';
   static const String _lockTimeoutKey = 'lock_timeout_seconds';
+  static const String _biometricEnabledKey = 'biometric_enabled';
   static const int _defaultLockTimeoutSeconds = 60;
 
   Future<String?> readEncryptionKey() {
@@ -54,6 +55,18 @@ class SecureStorageService {
 
   Future<void> setLockTimeoutSeconds(int seconds) {
     return _storage.write(key: _lockTimeoutKey, value: seconds.toString());
+  }
+
+  Future<bool> getBiometricEnabled() async {
+    final value = await _storage.read(key: _biometricEnabledKey);
+    return value == 'true';
+  }
+
+  Future<void> setBiometricEnabled(bool enabled) {
+    return _storage.write(
+      key: _biometricEnabledKey,
+      value: enabled ? 'true' : 'false',
+    );
   }
 }
 

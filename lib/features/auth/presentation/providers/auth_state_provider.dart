@@ -20,14 +20,20 @@ class AuthStateProvider extends ChangeNotifier
   DateTime? _lastActivityAt;
   String? _errorMessage;
   bool _biometricAvailable = false;
+  bool _biometricEnrolled = false;
+  bool _biometricEnabled = false;
 
   bool get isLocked => _isLocked;
   bool get needsPinSetup => _needsPinSetup;
   String? get errorMessage => _errorMessage;
   bool get biometricAvailable => _biometricAvailable;
+  bool get biometricEnrolled => _biometricEnrolled;
+  bool get biometricEnabled => _biometricEnabled;
 
   Future<void> init() async {
     _biometricAvailable = await _authManager.canUseBiometrics();
+    _biometricEnrolled = await _authManager.hasEnrolledBiometrics();
+    _biometricEnabled = await _secureStorage.getBiometricEnabled();
     final pinSet = await _authManager.hasPinSet();
     _needsPinSetup = !pinSet;
     _isLocked = true;
@@ -84,13 +90,36 @@ class AuthStateProvider extends ChangeNotifier
   }
 
   Future<bool> unlockWithBiometrics() async {
-    final ok = await _authManager.authenticateWithBiometrics();
-    if (ok) {
+    if (!_biometricEnabled) return false;
+    final result = await _authManager.authenticateWithBiometrics();
+    if (result == true) {
       _recordUnlock();
       return true;
     }
-    _errorMessage = 'Authentication failed';
+    if (result == false) {
+      _errorMessage = 'Authentication failed';
+      notifyListeners();
+    }
+    return false;
+  }
+
+  /// Turn on fingerprint / Face ID in the app, then try to authenticate once.
+  /// Returns true if auth succeeded (and vault unlocks).
+  Future<bool> enableBiometricAndUnlock() async {
+    await _secureStorage.setBiometricEnabled(true);
+    _biometricEnabled = true;
     notifyListeners();
+
+    final result = await _authManager.authenticateWithBiometrics();
+    if (result == true) {
+      _recordUnlock();
+      return true;
+    }
+    if (result == false) {
+      _errorMessage =
+          'Could not verify. Add a fingerprint or Face ID in device settings, then try again.';
+      notifyListeners();
+    }
     return false;
   }
 

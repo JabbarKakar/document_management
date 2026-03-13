@@ -33,6 +33,10 @@ class _LockScreenState extends State<LockScreen> {
     await context.read<AuthStateProvider>().unlockWithBiometrics();
   }
 
+  Future<void> _turnOnBiometric() async {
+    await context.read<AuthStateProvider>().enableBiometricAndUnlock();
+  }
+
   @override
   Widget build(BuildContext context) {
     final provider = context.watch<AuthStateProvider>();
@@ -98,13 +102,31 @@ class _LockScreenState extends State<LockScreen> {
                   child: const Text('Unlock'),
                 ),
               ),
-              if (provider.biometricAvailable) ...[
+              if (provider.biometricAvailable && provider.biometricEnrolled) ...[
                 const SizedBox(height: 16),
-                OutlinedButton.icon(
-                  onPressed: () => _unlockWithBiometrics(),
-                  icon: const Icon(Icons.fingerprint),
-                  label: const Text('Use fingerprint / Face ID'),
-                ),
+                if (provider.biometricEnabled)
+                  OutlinedButton.icon(
+                    onPressed: () => _unlockWithBiometrics(),
+                    icon: const Icon(Icons.fingerprint),
+                    label: const Text('Use fingerprint / Face ID'),
+                  )
+                else
+                  Column(
+                    children: [
+                      Text(
+                        'Use fingerprint or Face ID to unlock?',
+                        style: theme.textTheme.bodyMedium?.copyWith(
+                          color: theme.colorScheme.onSurfaceVariant,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      OutlinedButton.icon(
+                        onPressed: () => _turnOnBiometric(),
+                        icon: const Icon(Icons.fingerprint),
+                        label: const Text('Turn on'),
+                      ),
+                    ],
+                  ),
               ],
             ],
           ),
