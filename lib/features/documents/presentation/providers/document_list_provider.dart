@@ -6,6 +6,7 @@ import '../../data/services/document_file_picker.dart';
 import '../../domain/document_sorting.dart';
 import '../../domain/entities/vault_document.dart';
 import '../../domain/repositories/document_repository.dart';
+import '../../domain/vault_document_filters.dart';
 import '../../domain/vault_document_sort.dart';
 
 class DocumentListProvider extends ChangeNotifier {
@@ -24,12 +25,27 @@ class DocumentListProvider extends ChangeNotifier {
   String _currentQuery = '';
   int? _currentCategoryFilter;
   VaultDocumentSort _sortMode = VaultDocumentSort.newestFirst;
+  VaultFileTypeFilter _fileTypeFilter = VaultFileTypeFilter.all;
+  VaultExpiryFilter _expiryFilter = VaultExpiryFilter.any;
 
   bool get isLoading => _isLoading;
   List<VaultDocument> get documents => _documents;
   String get searchQuery => _currentQuery;
   int? get categoryFilter => _currentCategoryFilter;
   VaultDocumentSort get sortMode => _sortMode;
+  VaultFileTypeFilter get fileTypeFilter => _fileTypeFilter;
+  VaultExpiryFilter get expiryFilter => _expiryFilter;
+
+  /// Search, category, file type, or expiry filters (sort is not included).
+  bool get hasActiveListFilters =>
+      _currentQuery.isNotEmpty ||
+      hasStructuredFilters;
+
+  /// Category / file-type / expiry only (excludes search). Used for filter badge.
+  bool get hasStructuredFilters =>
+      _currentCategoryFilter != null ||
+      _fileTypeFilter != VaultFileTypeFilter.all ||
+      _expiryFilter != VaultExpiryFilter.any;
 
   /// Call once after construction (see [main.dart] provider `create`).
   Future<void> startup() async {
@@ -54,7 +70,12 @@ class DocumentListProvider extends ChangeNotifier {
     _isLoading = true;
     notifyListeners();
 
-    _documents = await _repository.getAllDocuments();
+    final baseList = await _repository.getAllDocuments();
+    _documents = applyAdvancedFilters(
+      baseList,
+      fileTypeFilter: _fileTypeFilter,
+      expiryFilter: _expiryFilter,
+    );
     _applySortToCurrentList();
     _isLoading = false;
     notifyListeners();
@@ -70,18 +91,55 @@ class DocumentListProvider extends ChangeNotifier {
     await _runFilteredQuery();
   }
 
+  Future<void> setFileTypeFilter(VaultFileTypeFilter filter) async {
+    if (filter == _fileTypeFilter) return;
+    _fileTypeFilter = filter;
+    await _runFilteredQuery();
+  }
+
+  Future<void> setExpiryFilter(VaultExpiryFilter filter) async {
+    if (filter == _expiryFilter) return;
+    _expiryFilter = filter;
+    await _runFilteredQuery();
+  }
+
+  void _resetStructuredFilterFields() {
+    _currentCategoryFilter = null;
+    _fileTypeFilter = VaultFileTypeFilter.all;
+    _expiryFilter = VaultExpiryFilter.any;
+  }
+
+  /// Resets category, file type, and expiry. Leaves the search query as-is.
+  Future<void> clearStructuredFilters() async {
+    _resetStructuredFilterFields();
+    await _runFilteredQuery();
+  }
+
+  /// Clears search, category, file-type, and expiry filters (not sort).
+  Future<void> clearAllListFilters() async {
+    _currentQuery = '';
+    _resetStructuredFilterFields();
+    await _runFilteredQuery();
+  }
+
   Future<void> _runFilteredQuery() async {
     _isLoading = true;
     notifyListeners();
 
+    final List<VaultDocument> baseList;
     if (_currentQuery.isEmpty && _currentCategoryFilter == null) {
-      _documents = await _repository.getAllDocuments();
+      baseList = await _repository.getAllDocuments();
     } else {
-      _documents = await _repository.searchDocuments(
+      baseList = await _repository.searchDocuments(
         query: _currentQuery,
         categoryId: _currentCategoryFilter,
       );
     }
+    _documents = applyAdvancedFilters(
+      baseList,
+      fileTypeFilter: _fileTypeFilter,
+      expiryFilter: _expiryFilter,
+    );
     _applySortToCurrentList();
 
     _isLoading = false;

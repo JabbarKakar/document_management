@@ -11,12 +11,32 @@ import '../../../settings/presentation/screens/settings_screen.dart';
 import '../../domain/entities/vault_document.dart';
 import '../../domain/vault_document_sort.dart';
 import '../providers/document_list_provider.dart';
+import '../widgets/document_filters_sheet.dart';
 import 'document_viewer_screen.dart';
 import 'edit_document_screen.dart';
 import 'vault_document_list_card.dart';
 
-class DocumentsHomeScreen extends StatelessWidget {
+class DocumentsHomeScreen extends StatefulWidget {
   const DocumentsHomeScreen({super.key});
+
+  @override
+  State<DocumentsHomeScreen> createState() => _DocumentsHomeScreenState();
+}
+
+class _DocumentsHomeScreenState extends State<DocumentsHomeScreen> {
+  late final TextEditingController _searchController;
+
+  @override
+  void initState() {
+    super.initState();
+    _searchController = TextEditingController();
+  }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
 
   void _pushEditScreen(BuildContext context, VaultDocument doc) {
     Navigator.of(context).push(
@@ -36,10 +56,14 @@ class DocumentsHomeScreen extends StatelessWidget {
     );
   }
 
+  Future<void> _clearAllListFilters() async {
+    _searchController.clear();
+    await context.read<DocumentListProvider>().clearAllListFilters();
+  }
+
   @override
   Widget build(BuildContext context) {
     final provider = context.watch<DocumentListProvider>();
-    final categories = context.watch<CategoryListProvider>().categories;
     final scheme = Theme.of(context).colorScheme;
     final textTheme = Theme.of(context).textTheme;
 
@@ -80,6 +104,16 @@ class DocumentsHomeScreen extends StatelessWidget {
                 ],
               ),
               IconButton(
+                tooltip: 'Filters',
+                onPressed: () => showDocumentFiltersSheet(context),
+                icon: Badge(
+                  isLabelVisible: provider.hasStructuredFilters,
+                  padding: const EdgeInsets.symmetric(horizontal: 5),
+                  backgroundColor: scheme.primary,
+                  child: const Icon(Icons.tune_rounded),
+                ),
+              ),
+              IconButton(
                 icon: const Icon(Icons.settings_outlined),
                 tooltip: 'Settings',
                 onPressed: () {
@@ -117,10 +151,12 @@ class DocumentsHomeScreen extends StatelessWidget {
             ],
           ),
           SliverPadding(
-            padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
+            padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
             sliver: SliverToBoxAdapter(
               child: TextField(
-                onChanged: (v) => context.read<DocumentListProvider>().setSearchQuery(v),
+                controller: _searchController,
+                onChanged: (v) =>
+                    context.read<DocumentListProvider>().setSearchQuery(v),
                 decoration: InputDecoration(
                   hintText: 'Search title or notes…',
                   prefixIcon: Icon(Icons.search_rounded, color: scheme.primary),
@@ -128,41 +164,43 @@ class DocumentsHomeScreen extends StatelessWidget {
               ),
             ),
           ),
-          SliverPadding(
-            padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-            sliver: SliverToBoxAdapter(
-              child: SizedBox(
-                height: 40,
-                child: ListView(
-                  scrollDirection: Axis.horizontal,
+          if (provider.hasActiveListFilters)
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
+                child: Wrap(
+                  spacing: 8,
+                  runSpacing: 6,
+                  crossAxisAlignment: WrapCrossAlignment.center,
                   children: [
-                    Padding(
-                      padding: const EdgeInsets.only(right: 8),
-                      child: FilterChip(
-                        label: const Text('All'),
-                        selected: provider.categoryFilter == null,
-                        showCheckmark: false,
-                        onSelected: (_) =>
-                            context.read<DocumentListProvider>().setCategoryFilter(null),
-                      ),
-                    ),
-                    for (final c in categories)
-                      Padding(
-                        padding: const EdgeInsets.only(right: 8),
-                        child: FilterChip(
-                          label: Text(c.name),
-                          selected: provider.categoryFilter == c.id,
-                          showCheckmark: false,
-                          onSelected: (_) => context
+                    if (provider.searchQuery.isNotEmpty)
+                      _FilterSummaryChip(
+                        label: '“${provider.searchQuery.length > 28 ? '${provider.searchQuery.substring(0, 28)}…' : provider.searchQuery}”',
+                        onDelete: () {
+                          _searchController.clear();
+                          context
                               .read<DocumentListProvider>()
-                              .setCategoryFilter(c.id),
-                        ),
+                              .setSearchQuery('');
+                        },
                       ),
+                    if (provider.hasStructuredFilters)
+                      ActionChip(
+                        avatar: Icon(
+                          Icons.tune_rounded,
+                          size: 18,
+                          color: scheme.primary,
+                        ),
+                        label: const Text('Edit filters'),
+                        onPressed: () => showDocumentFiltersSheet(context),
+                      ),
+                    TextButton(
+                      onPressed: _clearAllListFilters,
+                      child: const Text('Clear all'),
+                    ),
                   ],
                 ),
               ),
             ),
-          ),
           if (provider.isLoading && provider.documents.isEmpty)
             const SliverFillRemaining(
               child: Center(child: CircularProgressIndicator()),
@@ -177,23 +215,37 @@ class DocumentsHomeScreen extends StatelessWidget {
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       Icon(
-                        Icons.folder_special_outlined,
+                        provider.hasActiveListFilters
+                            ? Icons.search_off_rounded
+                            : Icons.folder_special_outlined,
                         size: 72,
                         color: scheme.primary.withValues(alpha: 0.55),
                       ),
                       const SizedBox(height: 20),
                       Text(
-                        'No documents yet',
+                        provider.hasActiveListFilters
+                            ? 'No matching documents'
+                            : 'No documents yet',
                         style: textTheme.headlineSmall,
                       ),
                       const SizedBox(height: 10),
                       Text(
-                        'Add images, scans, or PDFs. Everything stays encrypted on this device.',
+                        provider.hasActiveListFilters
+                            ? 'Try different search words or filters.'
+                            : 'Add images, scans, or PDFs. Everything stays encrypted on this device.',
                         textAlign: TextAlign.center,
                         style: textTheme.bodyMedium?.copyWith(
                           color: scheme.onSurfaceVariant,
                         ),
                       ),
+                      if (provider.hasActiveListFilters) ...[
+                        const SizedBox(height: 20),
+                        FilledButton.tonalIcon(
+                          onPressed: _clearAllListFilters,
+                          icon: const Icon(Icons.filter_alt_off_rounded),
+                          label: const Text('Clear all'),
+                        ),
+                      ],
                     ],
                   ),
                 ),
@@ -251,6 +303,25 @@ class DocumentsHomeScreen extends StatelessWidget {
         icon: const Icon(Icons.add_rounded),
         label: const Text('Add document'),
       ),
+    );
+  }
+}
+
+class _FilterSummaryChip extends StatelessWidget {
+  const _FilterSummaryChip({
+    required this.label,
+    required this.onDelete,
+  });
+
+  final String label;
+  final VoidCallback onDelete;
+
+  @override
+  Widget build(BuildContext context) {
+    return InputChip(
+      label: Text(label, overflow: TextOverflow.ellipsis),
+      deleteIcon: const Icon(Icons.close_rounded, size: 18),
+      onDeleted: onDelete,
     );
   }
 }

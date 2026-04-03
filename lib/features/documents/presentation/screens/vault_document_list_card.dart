@@ -8,6 +8,7 @@ import 'package:provider/provider.dart';
 
 import '../../../../core/services/encrypted_file_storage_service.dart';
 import '../../domain/entities/vault_document.dart';
+import '../../domain/expiry_calendar.dart';
 
 /// Serializes PDF page renders — Android backend does not allow parallel renders.
 class _PdfThumbnailLock {
@@ -228,23 +229,12 @@ class VaultDocumentListCard extends StatelessWidget {
     return '$y-$mo-$day';
   }
 
-  /// True when expiry is in the past or fewer than 7 calendar days from today (local).
-  static bool _isExpiryWithinLessThanSevenDays(DateTime expiry) {
-    final now = DateTime.now();
-    final today = DateTime(now.year, now.month, now.day);
-    final exp = expiry.toLocal();
-    final expiryDay = DateTime(exp.year, exp.month, exp.day);
-    final daysLeft = expiryDay.difference(today).inDays;
-    return daysLeft < 7;
-  }
-
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     final textTheme = Theme.of(context).textTheme;
     final expiry = document.expiryDate;
-    final expiryUrgent =
-        expiry != null && _isExpiryWithinLessThanSevenDays(expiry);
+    final expiryUrgent = expiry != null && isExpiryUrgentRed(expiry);
     final expiryColor = expiryUrgent ? scheme.error : scheme.onSurfaceVariant;
     final expiryIconColor =
         expiryUrgent ? scheme.error : scheme.onSurfaceVariant.withValues(alpha: 0.9);
