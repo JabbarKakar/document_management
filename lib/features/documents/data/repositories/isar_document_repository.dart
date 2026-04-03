@@ -85,6 +85,29 @@ class IsarDocumentRepository implements DocumentRepository {
   }
 
   @override
+  Future<VaultDocument> updateDocumentMetadata({
+    required int id,
+    required String title,
+    int? categoryId,
+    DateTime? expiryDate,
+    String? notes,
+  }) async {
+    final updated = await _isar.writeTxn<VaultDocumentModel>(() async {
+      final m = await _collection.get(id);
+      if (m == null) {
+        throw StateError('Document $id not found');
+      }
+      m.title = title;
+      m.categoryId = categoryId;
+      m.expiryDate = expiryDate;
+      m.notes = notes;
+      await _collection.put(m);
+      return m;
+    });
+    return updated.toEntity();
+  }
+
+  @override
   Future<void> deleteDocument(VaultDocument document) async {
     await _fileStorageService.deleteFile(document.filePath);
     await _isar.writeTxn(() => _collection.delete(document.id));

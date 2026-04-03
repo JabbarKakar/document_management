@@ -20,6 +20,14 @@ abstract class DocumentRepository {
     String? notes,
   });
 
+  Future<VaultDocument> updateDocumentMetadata({
+    required int id,
+    required String title,
+    int? categoryId,
+    DateTime? expiryDate,
+    String? notes,
+  });
+
   Future<void> deleteDocument(VaultDocument document);
 }
 

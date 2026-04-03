@@ -86,6 +86,24 @@ class DocumentListProvider extends ChangeNotifier {
     notifyListeners();
   }
 
+  Future<void> updateDocumentMetadata({
+    required int id,
+    required String title,
+    int? categoryId,
+    DateTime? expiryDate,
+    String? notes,
+  }) async {
+    final updated = await _repository.updateDocumentMetadata(
+      id: id,
+      title: title,
+      categoryId: categoryId,
+      expiryDate: expiryDate,
+      notes: notes,
+    );
+    await _expiryReminders.rescheduleForDocument(updated);
+    await _runFilteredQuery();
+  }
+
   Future<void> deleteDocument(VaultDocument document) async {
     _isLoading = true;
     notifyListeners();

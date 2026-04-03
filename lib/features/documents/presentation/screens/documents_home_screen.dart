@@ -12,16 +12,27 @@ import '../../domain/entities/vault_document.dart';
 import '../providers/document_list_provider.dart';
 import 'document_viewer_screen.dart';
 import 'edit_document_screen.dart';
+import 'vault_document_list_card.dart';
 
 class DocumentsHomeScreen extends StatelessWidget {
   const DocumentsHomeScreen({super.key});
 
-  static IconData _iconForType(VaultDocumentFileType t) {
-    return switch (t) {
-      VaultDocumentFileType.image => Icons.image_outlined,
-      VaultDocumentFileType.pdf => Icons.picture_as_pdf_outlined,
-      VaultDocumentFileType.other => Icons.insert_drive_file_outlined,
-    };
+  void _pushEditScreen(BuildContext context, VaultDocument doc) {
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => MultiProvider(
+          providers: [
+            ChangeNotifierProvider.value(
+              value: context.read<DocumentListProvider>(),
+            ),
+            ChangeNotifierProvider.value(
+              value: context.read<CategoryListProvider>(),
+            ),
+          ],
+          child: EditDocumentScreen(existing: doc),
+        ),
+      ),
+    );
   }
 
   @override
@@ -167,55 +178,22 @@ class DocumentsHomeScreen extends StatelessWidget {
                     const SizedBox(height: 10),
                 itemBuilder: (context, index) {
                   final doc = provider.documents[index];
-                  return Card(
-                    child: InkWell(
-                      borderRadius: BorderRadius.circular(16),
-                      onTap: () {
-                        Navigator.of(context).push(
-                          MaterialPageRoute<void>(
-                            builder: (_) =>
-                                Provider<EncryptedFileStorageService>.value(
-                                  value: context.read<EncryptedFileStorageService>(),
-                                  child: DocumentViewerScreen(document: doc),
-                                ),
-                          ),
-                        );
-                      },
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 8,
-                          vertical: 6,
+                  return VaultDocumentListCard(
+                    document: doc,
+                    onOpen: () {
+                      Navigator.of(context).push(
+                        MaterialPageRoute<void>(
+                          builder: (_) =>
+                              Provider<EncryptedFileStorageService>.value(
+                                value: context
+                                    .read<EncryptedFileStorageService>(),
+                                child: DocumentViewerScreen(document: doc),
+                              ),
                         ),
-                        child: ListTile(
-                          contentPadding: EdgeInsets.zero,
-                          leading: CircleAvatar(
-                            backgroundColor:
-                                scheme.primaryContainer.withValues(alpha: 0.9),
-                            foregroundColor: scheme.onPrimaryContainer,
-                            child: Icon(_iconForType(doc.fileType)),
-                          ),
-                          title: Text(
-                            doc.title,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                          subtitle: Text(
-                            doc.fileType.name.toUpperCase(),
-                            style: textTheme.labelSmall?.copyWith(
-                              letterSpacing: 0.08,
-                              color: scheme.onSurfaceVariant,
-                            ),
-                          ),
-                          trailing: IconButton(
-                            icon: Icon(
-                              Icons.delete_outline_rounded,
-                              color: scheme.error.withValues(alpha: 0.85),
-                            ),
-                            onPressed: () => provider.deleteDocument(doc),
-                          ),
-                        ),
-                      ),
-                    ),
+                      );
+                    },
+                    onEdit: () => _pushEditScreen(context, doc),
+                    onDelete: () => provider.deleteDocument(doc),
                   );
                 },
               ),
