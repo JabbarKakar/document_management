@@ -1,7 +1,6 @@
 import 'dart:io';
 import 'dart:typed_data';
 
-import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter_timezone/flutter_timezone.dart';
 import 'package:isar/isar.dart';
@@ -15,11 +14,8 @@ import '../../features/documents/domain/entities/vault_document.dart';
 import 'encrypted_file_storage_service.dart';
 import 'secure_storage_service.dart';
 
-/// Schedules local notifications at 30, 15, and 7 days before document expiry.
-///
-/// In **debug** builds only, schedules three test notifications at short
-/// offsets from schedule time (ignores day offsets and 09:00) so you can verify
-/// without waiting.
+/// Schedules local notifications at 30, 15, and 7 days before document expiry
+/// (09:00 local), with fallbacks when those offsets are already in the past.
 class ExpiryReminderService {
   ExpiryReminderService({
     required Isar isar,
@@ -41,9 +37,6 @@ class ExpiryReminderService {
   static const int _hour = 9;
   static const int _minute = 0;
 
-  /// Debug-only: seconds from "now" for each of the three test notifications.
-  static const List<int> _debugOffsetsSeconds = [10, 30, 55];
-
   static bool _timeZonesInitialized = false;
 
   static Future<void> ensureLocalTimeZone() async {
@@ -62,9 +55,7 @@ class ExpiryReminderService {
   static int notificationId(int documentId, int index) => documentId * 10 + index;
 
   Future<void> cancelForDocument(int documentId) async {
-    final count =
-        kDebugMode ? _debugOffsetsSeconds.length : _daysBefore.length;
-    for (var i = 0; i < count; i++) {
+    for (var i = 0; i < _daysBefore.length; i++) {
       await _plugin.cancel(id: notificationId(documentId, i));
     }
   }
@@ -97,25 +88,6 @@ class ExpiryReminderService {
     final expiryDate = DateTime(expiry.year, expiry.month, expiry.day);
     final now = tz.TZDateTime.now(tz.local);
     final notificationDetails = await _notificationDetailsFor(document);
-
-    if (kDebugMode) {
-      for (var i = 0; i < _debugOffsetsSeconds.length; i++) {
-        final secs = _debugOffsetsSeconds[i];
-        final scheduled = now.add(Duration(seconds: secs));
-        final body =
-            '[TEST] $title — expiry ${_formatDate(expiryDate)}. '
-            'Fires in ~${secs}s (${i + 1}/3). Release uses 30/15/7 days at 09:00.';
-        await _plugin.zonedSchedule(
-          id: notificationId(document.id, i),
-          scheduledDate: scheduled,
-          notificationDetails: notificationDetails,
-          androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
-          title: 'Document expiry reminder (debug)',
-          body: body,
-        );
-      }
-      return;
-    }
 
     var scheduledAny = false;
     for (var i = 0; i < _daysBefore.length; i++) {
