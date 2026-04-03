@@ -125,7 +125,10 @@ class _AppInitGateState extends State<_AppInitGate> {
           fileStorage: fileStorage,
         );
 
-        final mainContent = MultiProvider(
+        // Providers must stay above [_AuthGate] so locking (swap to [LockScreen])
+        // does not dispose [DocumentListProvider] while pushed routes (e.g. add
+        // document) still need it.
+        return MultiProvider(
           providers: [
             Provider<VaultEncryptionService>.value(value: vaultEncryption),
             Provider<EncryptedFileStorageService>.value(value: fileStorage),
@@ -145,21 +148,16 @@ class _AppInitGateState extends State<_AppInitGate> {
                   CategoryListProvider(IsarCategoryRepository(isar))
                     ..loadAndEnsureDefaults(),
             ),
+            ChangeNotifierProvider<AuthStateProvider>(
+              create: (_) {
+                final authManager = AuthManager();
+                final p = AuthStateProvider(authManager: authManager);
+                p.init();
+                return p;
+              },
+            ),
           ],
-          child: _ExpiryBootstrap(
-            service: expiryReminders,
-            child: const DocumentsHomeScreen(),
-          ),
-        );
-
-        return ChangeNotifierProvider<AuthStateProvider>(
-          create: (_) {
-            final authManager = AuthManager();
-            final p = AuthStateProvider(authManager: authManager);
-            p.init();
-            return p;
-          },
-          child: _AuthGate(mainContent: mainContent),
+          child: const _AuthGate(),
         );
     }
   }
@@ -189,9 +187,7 @@ class _ExpiryBootstrapState extends State<_ExpiryBootstrap> {
 }
 
 class _AuthGate extends StatefulWidget {
-  const _AuthGate({required this.mainContent});
-
-  final Widget mainContent;
+  const _AuthGate();
 
   @override
   State<_AuthGate> createState() => _AuthGateState();
@@ -226,7 +222,10 @@ class _AuthGateState extends State<_AuthGate> {
     if (auth.isLocked) {
       return const LockScreen();
     }
-    return widget.mainContent;
+    return _ExpiryBootstrap(
+      service: context.read<ExpiryReminderService>(),
+      child: const DocumentsHomeScreen(),
+    );
   }
 }
 
