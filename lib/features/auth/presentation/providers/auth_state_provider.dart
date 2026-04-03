@@ -129,6 +129,53 @@ class AuthStateProvider extends ChangeNotifier
     notifyListeners();
   }
 
+  /// Returns `null` on success, or an error message string.
+  Future<String?> changePin({
+    required String currentPin,
+    required String newPin,
+    required String confirmPin,
+  }) async {
+    if (newPin.length < 4) {
+      return 'New PIN must be at least 4 digits';
+    }
+    if (newPin != confirmPin) {
+      return 'New PINs do not match';
+    }
+    final ok = await _authManager.verifyPin(currentPin);
+    if (!ok) {
+      return 'Current PIN is incorrect';
+    }
+    try {
+      await _authManager.setPin(newPin);
+    } catch (e) {
+      return e.toString();
+    }
+    return null;
+  }
+
+  /// Turn biometric unlock on or off. Turning on runs one biometric prompt.
+  Future<void> setBiometricUnlockEnabled(bool enabled) async {
+    if (enabled) {
+      if (!_biometricAvailable || !_biometricEnrolled) {
+        return;
+      }
+      final result = await _authManager.authenticateWithBiometrics();
+      if (result != true) {
+        if (result == false) {
+          _errorMessage = 'Could not verify biometrics';
+          notifyListeners();
+        }
+        return;
+      }
+      await _secureStorage.setBiometricEnabled(true);
+      _biometricEnabled = true;
+    } else {
+      await _secureStorage.setBiometricEnabled(false);
+      _biometricEnabled = false;
+    }
+    notifyListeners();
+  }
+
   void recordActivity() {
     _lastActivityAt = DateTime.now();
   }

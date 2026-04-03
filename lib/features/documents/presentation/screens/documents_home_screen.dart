@@ -6,6 +6,7 @@ import '../../../../core/services/expiry_reminder_service.dart';
 import '../../../../core/services/secure_storage_service.dart';
 import '../../../auth/presentation/providers/auth_state_provider.dart';
 import '../../../categories/presentation/providers/category_list_provider.dart';
+import '../../../settings/presentation/screens/settings_screen.dart';
 import '../providers/document_list_provider.dart';
 import 'document_viewer_screen.dart';
 import 'edit_document_screen.dart';
@@ -23,9 +24,31 @@ class DocumentsHomeScreen extends StatelessWidget {
         title: const Text('Your Documents'),
         actions: [
           IconButton(
-            icon: const Icon(Icons.notifications_outlined),
-            tooltip: 'Expiry reminders',
-            onPressed: () => _showExpiryReminderSettings(context),
+            icon: const Icon(Icons.settings_outlined),
+            tooltip: 'Settings',
+            onPressed: () {
+              Navigator.of(context).push(
+                MaterialPageRoute<void>(
+                  builder: (_) => MultiProvider(
+                    providers: [
+                      Provider.value(
+                        value: context.read<SecureStorageService>(),
+                      ),
+                      Provider.value(
+                        value: context.read<ExpiryReminderService>(),
+                      ),
+                      ChangeNotifierProvider.value(
+                        value: context.read<AuthStateProvider>(),
+                      ),
+                      ChangeNotifierProvider.value(
+                        value: context.read<CategoryListProvider>(),
+                      ),
+                    ],
+                    child: const SettingsScreen(),
+                  ),
+                ),
+              );
+            },
           ),
           IconButton(
             icon: const Icon(Icons.lock_outline),
@@ -146,46 +169,3 @@ class DocumentsHomeScreen extends StatelessWidget {
     );
   }
 }
-
-Future<void> _showExpiryReminderSettings(BuildContext context) async {
-  final storage = context.read<SecureStorageService>();
-  final expiry = context.read<ExpiryReminderService>();
-  var enabled = await storage.getExpiryRemindersEnabled();
-  if (!context.mounted) return;
-
-  final result = await showDialog<bool>(
-    context: context,
-    builder: (dialogContext) {
-      return StatefulBuilder(
-        builder: (ctx, setLocalState) {
-          return AlertDialog(
-            title: const Text('Expiry reminders'),
-            content: SwitchListTile(
-              title: const Text('Notify before documents expire'),
-              subtitle: const Text(
-                'Alerts at 30, 15, and 7 days before the expiry date you set.',
-              ),
-              value: enabled,
-              onChanged: (v) => setLocalState(() => enabled = v),
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(dialogContext),
-                child: const Text('Cancel'),
-              ),
-              FilledButton(
-                onPressed: () => Navigator.pop(dialogContext, enabled),
-                child: const Text('Save'),
-              ),
-            ],
-          );
-        },
-      );
-    },
-  );
-
-  if (result == null || !context.mounted) return;
-  await storage.setExpiryRemindersEnabled(result);
-  await expiry.syncAll();
-}
-
