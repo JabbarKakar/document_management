@@ -85,6 +85,7 @@ class DocumentListProvider extends ChangeNotifier {
     notifyListeners();
 
     await _expiryReminders.cancelForDocument(document.id);
+    await _expiryReminders.deleteNotificationPreviewForDocument(document.id);
     await _repository.deleteDocument(document);
     _documents = await _repository.getAllDocuments();
 

@@ -43,6 +43,7 @@ dependencies:
   flutter_secure_storage: ^10.0.0
 
   # File system paths
+  path: ^1.9.1
   path_provider: ^2.1.5
 
   # Biometric authentication

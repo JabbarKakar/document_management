@@ -116,6 +116,7 @@ class _AppInitGateState extends State<_AppInitGate> {
           isar: isar,
           plugin: initializer.notificationInitializer.plugin,
           secureStorage: initializer.secureStorage,
+          fileStorage: fileStorage,
         );
 
         final mainContent = MultiProvider(
