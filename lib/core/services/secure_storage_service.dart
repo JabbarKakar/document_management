@@ -17,6 +17,7 @@ class SecureStorageService {
   static const String _biometricEnabledKey = 'biometric_enabled';
   static const String _expiryRemindersEnabledKey = 'expiry_reminders_enabled';
   static const String _themeModeKey = 'theme_mode';
+  static const String _documentListSortKey = 'document_list_sort';
   static const int _defaultLockTimeoutSeconds = 60;
 
   /// `system` | `light` | `dark`. Default system.
@@ -30,6 +31,15 @@ class SecureStorageService {
 
   Future<void> setThemeModePreference(String mode) {
     return _storage.write(key: _themeModeKey, value: mode);
+  }
+
+  /// Sort preference: `newest` | `oldest` | `title_az` | `title_za` | `expiry_soonest`.
+  Future<String?> readDocumentListSort() {
+    return _storage.read(key: _documentListSortKey);
+  }
+
+  Future<void> writeDocumentListSort(String storageValue) {
+    return _storage.write(key: _documentListSortKey, value: storageValue);
   }
 
   Future<String?> readEncryptionKey() {

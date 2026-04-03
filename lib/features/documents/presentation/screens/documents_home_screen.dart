@@ -9,6 +9,7 @@ import '../../../auth/presentation/providers/auth_state_provider.dart';
 import '../../../categories/presentation/providers/category_list_provider.dart';
 import '../../../settings/presentation/screens/settings_screen.dart';
 import '../../domain/entities/vault_document.dart';
+import '../../domain/vault_document_sort.dart';
 import '../providers/document_list_provider.dart';
 import 'document_viewer_screen.dart';
 import 'edit_document_screen.dart';
@@ -49,6 +50,35 @@ class DocumentsHomeScreen extends StatelessWidget {
             pinned: true,
             title: const Text('Your vault'),
             actions: [
+              PopupMenuButton<VaultDocumentSort>(
+                tooltip: 'Sort',
+                icon: const Icon(Icons.sort_rounded),
+                initialValue: provider.sortMode,
+                onSelected: (VaultDocumentSort mode) {
+                  context.read<DocumentListProvider>().setSortMode(mode);
+                },
+                itemBuilder: (context) => [
+                  for (final s in VaultDocumentSort.values)
+                    PopupMenuItem<VaultDocumentSort>(
+                      value: s,
+                      child: Row(
+                        children: [
+                          SizedBox(
+                            width: 28,
+                            child: s == provider.sortMode
+                                ? Icon(
+                                    Icons.check_rounded,
+                                    size: 20,
+                                    color: scheme.primary,
+                                  )
+                                : null,
+                          ),
+                          Text(s.menuLabel),
+                        ],
+                      ),
+                    ),
+                ],
+              ),
               IconButton(
                 icon: const Icon(Icons.settings_outlined),
                 tooltip: 'Settings',

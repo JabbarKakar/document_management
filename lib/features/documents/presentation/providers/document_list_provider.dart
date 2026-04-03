@@ -1,34 +1,61 @@
 import 'package:flutter/foundation.dart';
 
 import '../../../../core/services/expiry_reminder_service.dart';
+import '../../../../core/services/secure_storage_service.dart';
 import '../../data/services/document_file_picker.dart';
+import '../../domain/document_sorting.dart';
 import '../../domain/entities/vault_document.dart';
 import '../../domain/repositories/document_repository.dart';
+import '../../domain/vault_document_sort.dart';
 
 class DocumentListProvider extends ChangeNotifier {
   DocumentListProvider(
     this._repository,
     this._expiryReminders,
+    this._secureStorage,
   );
 
   final DocumentRepository _repository;
   final ExpiryReminderService _expiryReminders;
+  final SecureStorageService _secureStorage;
 
   bool _isLoading = false;
   List<VaultDocument> _documents = [];
   String _currentQuery = '';
   int? _currentCategoryFilter;
+  VaultDocumentSort _sortMode = VaultDocumentSort.newestFirst;
 
   bool get isLoading => _isLoading;
   List<VaultDocument> get documents => _documents;
   String get searchQuery => _currentQuery;
   int? get categoryFilter => _currentCategoryFilter;
+  VaultDocumentSort get sortMode => _sortMode;
+
+  /// Call once after construction (see [main.dart] provider `create`).
+  Future<void> startup() async {
+    final stored = await _secureStorage.readDocumentListSort();
+    _sortMode = VaultDocumentSort.fromStorage(stored);
+    await loadDocuments();
+  }
+
+  Future<void> setSortMode(VaultDocumentSort mode) async {
+    if (mode == _sortMode) return;
+    _sortMode = mode;
+    await _secureStorage.writeDocumentListSort(mode.storageValue);
+    sortVaultDocuments(_documents, _sortMode);
+    notifyListeners();
+  }
+
+  void _applySortToCurrentList() {
+    sortVaultDocuments(_documents, _sortMode);
+  }
 
   Future<void> loadDocuments() async {
     _isLoading = true;
     notifyListeners();
 
     _documents = await _repository.getAllDocuments();
+    _applySortToCurrentList();
     _isLoading = false;
     notifyListeners();
   }
@@ -55,6 +82,7 @@ class DocumentListProvider extends ChangeNotifier {
         categoryId: _currentCategoryFilter,
       );
     }
+    _applySortToCurrentList();
 
     _isLoading = false;
     notifyListeners();
@@ -81,9 +109,7 @@ class DocumentListProvider extends ChangeNotifier {
     );
     await _expiryReminders.rescheduleForDocument(added);
 
-    _documents = await _repository.getAllDocuments();
-    _isLoading = false;
-    notifyListeners();
+    await _runFilteredQuery();
   }
 
   Future<void> updateDocumentMetadata({
@@ -111,10 +137,6 @@ class DocumentListProvider extends ChangeNotifier {
     await _expiryReminders.cancelForDocument(document.id);
     await _expiryReminders.deleteNotificationPreviewForDocument(document.id);
     await _repository.deleteDocument(document);
-    _documents = await _repository.getAllDocuments();
-
-    _isLoading = false;
-    notifyListeners();
+    await _runFilteredQuery();
   }
 }
-

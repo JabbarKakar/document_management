@@ -135,13 +135,18 @@ class _AppInitGateState extends State<_AppInitGate> {
             Provider<SecureStorageService>.value(value: initializer.secureStorage),
             Provider<ExpiryReminderService>.value(value: expiryReminders),
             ChangeNotifierProvider<DocumentListProvider>(
-              create: (_) => DocumentListProvider(
-                IsarDocumentRepository(
-                  isar: isar,
-                  fileStorageService: fileStorage,
-                ),
-                expiryReminders,
-              )..loadDocuments(),
+              create: (_) {
+                final list = DocumentListProvider(
+                  IsarDocumentRepository(
+                    isar: isar,
+                    fileStorageService: fileStorage,
+                  ),
+                  expiryReminders,
+                  initializer.secureStorage,
+                );
+                list.startup();
+                return list;
+              },
             ),
             ChangeNotifierProvider<CategoryListProvider>(
               create: (_) =>
