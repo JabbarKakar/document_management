@@ -9,8 +9,10 @@ class NotificationInitializer {
 
   Future<void> initialize() async {
     const androidSettings = AndroidInitializationSettings('@mipmap/ic_launcher');
+    const darwinSettings = DarwinInitializationSettings();
     const initializationSettings = InitializationSettings(
       android: androidSettings,
+      iOS: darwinSettings,
     );
 
     await _plugin.initialize(
@@ -18,17 +20,23 @@ class NotificationInitializer {
     );
 
     const androidChannel = AndroidNotificationChannel(
-      'expiry_reminders',
+      'document_expiry_v2',
       'Document expiry reminders',
       description: 'Notifications for upcoming document expiry dates.',
-      importance: Importance.defaultImportance,
+      importance: Importance.high,
     );
 
     final androidPlugin = _plugin.resolvePlatformSpecificImplementation<
         AndroidFlutterLocalNotificationsPlugin>();
     if (androidPlugin != null) {
       await androidPlugin.createNotificationChannel(androidChannel);
+      await androidPlugin.requestNotificationsPermission();
+      await androidPlugin.requestExactAlarmsPermission();
     }
+
+    final ios = _plugin.resolvePlatformSpecificImplementation<
+        IOSFlutterLocalNotificationsPlugin>();
+    await ios?.requestPermissions(alert: true, badge: true, sound: true);
   }
 }
 

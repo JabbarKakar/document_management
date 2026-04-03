@@ -35,6 +35,10 @@ class AppInitializer {
 
   Isar? get isar => _isar;
 
+  SecureStorageService get secureStorage => _secureStorageService;
+
+  NotificationInitializer get notificationInitializer => _notificationInitializer;
+
   Future<AppInitResult> initialize() async {
     try {
       final appDocsDir = await _appDirectoryService.getAppDocumentsDirectory();

@@ -15,6 +15,7 @@ class SecureStorageService {
   static const String _pinHashKey = 'pin_hash';
   static const String _lockTimeoutKey = 'lock_timeout_seconds';
   static const String _biometricEnabledKey = 'biometric_enabled';
+  static const String _expiryRemindersEnabledKey = 'expiry_reminders_enabled';
   static const int _defaultLockTimeoutSeconds = 60;
 
   Future<String?> readEncryptionKey() {
@@ -65,6 +66,20 @@ class SecureStorageService {
   Future<void> setBiometricEnabled(bool enabled) {
     return _storage.write(
       key: _biometricEnabledKey,
+      value: enabled ? 'true' : 'false',
+    );
+  }
+
+  /// Default true. When false, no expiry notifications are scheduled (Module 8).
+  Future<bool> getExpiryRemindersEnabled() async {
+    final value = await _storage.read(key: _expiryRemindersEnabledKey);
+    if (value == null) return true;
+    return value == 'true';
+  }
+
+  Future<void> setExpiryRemindersEnabled(bool enabled) {
+    return _storage.write(
+      key: _expiryRemindersEnabledKey,
       value: enabled ? 'true' : 'false',
     );
   }

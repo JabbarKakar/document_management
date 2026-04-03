@@ -51,8 +51,13 @@ dependencies:
   # PIN hashing (secure storage)
   crypto: ^3.0.3
 
+  # AES document file encryption
+  encrypt: ^5.0.3
+
   # Local notifications
   flutter_local_notifications: ^21.0.0
+  timezone: ^0.11.0
+  flutter_timezone: ^3.0.0
 
   # File import (gallery, camera, pdf)
   image_picker: ^1.2.1

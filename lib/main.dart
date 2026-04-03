@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -5,7 +7,10 @@ import 'core/auth/auth_manager.dart';
 import 'core/init/app_init_result.dart';
 import 'core/init/app_initializer.dart';
 import 'core/providers/app_init_provider.dart';
+import 'core/encryption/vault_encryption_service.dart';
 import 'core/services/encrypted_file_storage_service.dart';
+import 'core/services/expiry_reminder_service.dart';
+import 'core/services/secure_storage_service.dart';
 import 'features/auth/presentation/providers/auth_state_provider.dart';
 import 'features/auth/presentation/screens/create_pin_screen.dart';
 import 'features/auth/presentation/screens/lock_screen.dart';
@@ -101,16 +106,31 @@ class _AppInitGateState extends State<_AppInitGate> {
         }
 
         final vaultPath = result.appDocumentsPath;
-        final fileStorage = EncryptedFileStorageService(vaultPath);
+        final vaultEncryption = VaultEncryptionService(SecureStorageService());
+        final fileStorage = EncryptedFileStorageService(
+          vaultPath,
+          vaultEncryption,
+        );
+
+        final expiryReminders = ExpiryReminderService(
+          isar: isar,
+          plugin: initializer.notificationInitializer.plugin,
+          secureStorage: initializer.secureStorage,
+        );
 
         final mainContent = MultiProvider(
           providers: [
+            Provider<VaultEncryptionService>.value(value: vaultEncryption),
+            Provider<EncryptedFileStorageService>.value(value: fileStorage),
+            Provider<SecureStorageService>.value(value: initializer.secureStorage),
+            Provider<ExpiryReminderService>.value(value: expiryReminders),
             ChangeNotifierProvider<DocumentListProvider>(
               create: (_) => DocumentListProvider(
                 IsarDocumentRepository(
                   isar: isar,
                   fileStorageService: fileStorage,
                 ),
+                expiryReminders,
               )..loadDocuments(),
             ),
             ChangeNotifierProvider<CategoryListProvider>(
@@ -119,7 +139,10 @@ class _AppInitGateState extends State<_AppInitGate> {
                     ..loadAndEnsureDefaults(),
             ),
           ],
-          child: const DocumentsHomeScreen(),
+          child: _ExpiryBootstrap(
+            service: expiryReminders,
+            child: const DocumentsHomeScreen(),
+          ),
         );
 
         return ChangeNotifierProvider<AuthStateProvider>(
@@ -133,6 +156,29 @@ class _AppInitGateState extends State<_AppInitGate> {
         );
     }
   }
+}
+
+class _ExpiryBootstrap extends StatefulWidget {
+  const _ExpiryBootstrap({required this.service, required this.child});
+
+  final ExpiryReminderService service;
+  final Widget child;
+
+  @override
+  State<_ExpiryBootstrap> createState() => _ExpiryBootstrapState();
+}
+
+class _ExpiryBootstrapState extends State<_ExpiryBootstrap> {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      unawaited(widget.service.syncAll());
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) => widget.child;
 }
 
 class _AuthGate extends StatefulWidget {
@@ -221,37 +267,6 @@ class _InitErrorScreen extends StatelessWidget {
               ),
             ],
           ),
-        ),
-      ),
-    );
-  }
-}
-
-class _RootHomePlaceholder extends StatelessWidget {
-  const _RootHomePlaceholder({required this.result});
-
-  final AppInitResult result;
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Offline Personal Document Vault'),
-      ),
-      body: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text(
-              'Initialization complete.',
-              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 12),
-            Text('First launch: ${result.isFirstLaunch}'),
-            Text('Biometric available: ${result.biometricAvailable}'),
-            Text('Vault directory: ${result.appDocumentsPath}'),
-          ],
         ),
       ),
     );

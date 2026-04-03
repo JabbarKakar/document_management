@@ -1,13 +1,18 @@
 import 'package:flutter/foundation.dart';
 
+import '../../../../core/services/expiry_reminder_service.dart';
 import '../../data/services/document_file_picker.dart';
 import '../../domain/entities/vault_document.dart';
 import '../../domain/repositories/document_repository.dart';
 
 class DocumentListProvider extends ChangeNotifier {
-  DocumentListProvider(this._repository);
+  DocumentListProvider(
+    this._repository,
+    this._expiryReminders,
+  );
 
   final DocumentRepository _repository;
+  final ExpiryReminderService _expiryReminders;
 
   bool _isLoading = false;
   List<VaultDocument> _documents = [];
@@ -59,7 +64,7 @@ class DocumentListProvider extends ChangeNotifier {
     _isLoading = true;
     notifyListeners();
 
-    await _repository.addDocument(
+    final added = await _repository.addDocument(
       title: title,
       fileBytes: pickedFile.bytes,
       originalFileName: pickedFile.fileName,
@@ -68,6 +73,7 @@ class DocumentListProvider extends ChangeNotifier {
       notes: notes,
       categoryId: categoryId,
     );
+    await _expiryReminders.rescheduleForDocument(added);
 
     _documents = await _repository.getAllDocuments();
     _isLoading = false;
@@ -78,6 +84,7 @@ class DocumentListProvider extends ChangeNotifier {
     _isLoading = true;
     notifyListeners();
 
+    await _expiryReminders.cancelForDocument(document.id);
     await _repository.deleteDocument(document);
     _documents = await _repository.getAllDocuments();
 
