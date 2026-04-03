@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:provider/provider.dart';
 
+import '../../../../core/providers/theme_controller.dart';
 import '../../../../core/services/expiry_reminder_service.dart';
 import '../../../../core/services/secure_storage_service.dart';
 import '../../../auth/presentation/providers/auth_state_provider.dart';
@@ -89,6 +90,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   @override
   Widget build(BuildContext context) {
     final auth = context.watch<AuthStateProvider>();
+    final themeCtrl = context.watch<ThemeController>();
 
     return Scaffold(
       appBar: AppBar(
@@ -96,6 +98,44 @@ class _SettingsScreenState extends State<SettingsScreen> {
       ),
       body: ListView(
         children: [
+          const _SectionHeader('Appearance'),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 4, 20, 8),
+            child: SegmentedButton<ThemeMode>(
+              segments: const [
+                ButtonSegment<ThemeMode>(
+                  value: ThemeMode.system,
+                  label: Text('Auto'),
+                  icon: Icon(Icons.brightness_auto_outlined, size: 18),
+                ),
+                ButtonSegment<ThemeMode>(
+                  value: ThemeMode.light,
+                  label: Text('Light'),
+                  icon: Icon(Icons.light_mode_outlined, size: 18),
+                ),
+                ButtonSegment<ThemeMode>(
+                  value: ThemeMode.dark,
+                  label: Text('Dark'),
+                  icon: Icon(Icons.dark_mode_outlined, size: 18),
+                ),
+              ],
+              emptySelectionAllowed: false,
+              showSelectedIcon: false,
+              selected: {themeCtrl.themeMode},
+              onSelectionChanged: (Set<ThemeMode> next) {
+                themeCtrl.setThemeMode(next.first);
+              },
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
+            child: Text(
+              '“Auto” follows your device light or dark mode.',
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  ),
+            ),
+          ),
           const _SectionHeader('Reminders'),
           SwitchListTile(
             secondary: const Icon(Icons.notifications_outlined),

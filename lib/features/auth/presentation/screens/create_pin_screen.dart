@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../../../../core/widgets/vault_page_shell.dart';
 import '../providers/auth_state_provider.dart';
 
 class CreatePinScreen extends StatefulWidget {
@@ -24,103 +25,95 @@ class _CreatePinScreenState extends State<CreatePinScreen> {
   }
 
   Future<void> _submit() async {
-    final ok = await context.read<AuthStateProvider>().setPin(
-          _pinController.text,
-          _confirmController.text,
-        );
-    if (ok && mounted) {
-      // Provider already unlocked; parent will rebuild and show main content.
-    }
+    await context.read<AuthStateProvider>().setPin(
+      _pinController.text,
+      _confirmController.text,
+    );
   }
 
   @override
   Widget build(BuildContext context) {
     final provider = context.watch<AuthStateProvider>();
-    final theme = Theme.of(context);
+    final scheme = Theme.of(context).colorScheme;
+    final textTheme = Theme.of(context).textTheme;
 
     return Scaffold(
-      body: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(
-                Icons.lock_outline,
-                size: 64,
-                color: theme.colorScheme.primary,
+      body: VaultPageShell(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Icon(
+              Icons.key_rounded,
+              size: 56,
+              color: scheme.primary,
+            ),
+            const SizedBox(height: 20),
+            Text(
+              'Create your PIN',
+              textAlign: TextAlign.center,
+              style: textTheme.headlineSmall,
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'At least 4 digits. You will use this to unlock the vault.',
+              textAlign: TextAlign.center,
+              style: textTheme.bodyMedium?.copyWith(
+                color: scheme.onSurfaceVariant,
               ),
-              const SizedBox(height: 24),
-              Text(
-                'Create a PIN',
-                style: theme.textTheme.headlineSmall,
+            ),
+            const SizedBox(height: 28),
+            TextField(
+              controller: _pinController,
+              obscureText: _obscurePin,
+              keyboardType: TextInputType.number,
+              maxLength: 8,
+              decoration: InputDecoration(
+                labelText: 'PIN',
+                counterText: '',
+                suffixIcon: IconButton(
+                  icon: Icon(
+                    _obscurePin ? Icons.visibility_outlined : Icons.visibility_off_outlined,
+                  ),
+                  onPressed: () =>
+                      setState(() => _obscurePin = !_obscurePin),
+                ),
               ),
-              const SizedBox(height: 8),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _confirmController,
+              obscureText: _obscureConfirm,
+              keyboardType: TextInputType.number,
+              maxLength: 8,
+              decoration: InputDecoration(
+                labelText: 'Confirm PIN',
+                counterText: '',
+                suffixIcon: IconButton(
+                  icon: Icon(
+                    _obscureConfirm
+                        ? Icons.visibility_outlined
+                        : Icons.visibility_off_outlined,
+                  ),
+                  onPressed: () =>
+                      setState(() => _obscureConfirm = !_obscureConfirm),
+                ),
+              ),
+            ),
+            if (provider.errorMessage != null) ...[
+              const SizedBox(height: 14),
               Text(
-                'Use at least 4 digits. You will need this to unlock the vault.',
+                provider.errorMessage!,
+                style: textTheme.bodySmall?.copyWith(color: scheme.error),
                 textAlign: TextAlign.center,
-                style: theme.textTheme.bodyMedium?.copyWith(
-                  color: theme.colorScheme.onSurfaceVariant,
-                ),
-              ),
-              const SizedBox(height: 32),
-              TextField(
-                controller: _pinController,
-                obscureText: _obscurePin,
-                keyboardType: TextInputType.number,
-                maxLength: 8,
-                decoration: InputDecoration(
-                  labelText: 'PIN',
-                  border: const OutlineInputBorder(),
-                  counterText: '',
-                  suffixIcon: IconButton(
-                    icon: Icon(
-                      _obscurePin ? Icons.visibility : Icons.visibility_off,
-                    ),
-                    onPressed: () =>
-                        setState(() => _obscurePin = !_obscurePin),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 16),
-              TextField(
-                controller: _confirmController,
-                obscureText: _obscureConfirm,
-                keyboardType: TextInputType.number,
-                maxLength: 8,
-                decoration: InputDecoration(
-                  labelText: 'Confirm PIN',
-                  border: const OutlineInputBorder(),
-                  counterText: '',
-                  suffixIcon: IconButton(
-                    icon: Icon(
-                      _obscureConfirm
-                          ? Icons.visibility
-                          : Icons.visibility_off,
-                    ),
-                    onPressed: () =>
-                        setState(() => _obscureConfirm = !_obscureConfirm),
-                  ),
-                ),
-              ),
-              if (provider.errorMessage != null) ...[
-                const SizedBox(height: 16),
-                Text(
-                  provider.errorMessage!,
-                  style: TextStyle(color: theme.colorScheme.error),
-                  textAlign: TextAlign.center,
-                ),
-              ],
-              const SizedBox(height: 24),
-              SizedBox(
-                width: double.infinity,
-                child: FilledButton(
-                  onPressed: () => _submit(),
-                  child: const Text('Create PIN'),
-                ),
               ),
             ],
-          ),
+            const SizedBox(height: 24),
+            FilledButton(
+              onPressed: _submit,
+              child: const Text('Save and continue'),
+            ),
+          ],
         ),
       ),
     );

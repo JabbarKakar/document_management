@@ -40,6 +40,7 @@ class _CategoryManagementScreenState extends State<CategoryManagementScreen> {
           title: const Text('Rename category'),
           content: TextField(
             controller: controller,
+            autofocus: true,
             decoration: const InputDecoration(
               labelText: 'Name',
             ),
@@ -49,7 +50,7 @@ class _CategoryManagementScreenState extends State<CategoryManagementScreen> {
               onPressed: () => Navigator.of(ctx).pop(),
               child: const Text('Cancel'),
             ),
-            TextButton(
+            FilledButton(
               onPressed: () =>
                   Navigator.of(ctx).pop(controller.text.trim()),
               child: const Text('Save'),
@@ -58,7 +59,7 @@ class _CategoryManagementScreenState extends State<CategoryManagementScreen> {
         );
       },
     );
-    if (newName != null && newName.isNotEmpty) {
+    if (newName != null && newName.isNotEmpty && context.mounted) {
       await context
           .read<CategoryListProvider>()
           .renameCategory(category, newName);
@@ -75,15 +76,14 @@ class _CategoryManagementScreenState extends State<CategoryManagementScreen> {
         return AlertDialog(
           title: const Text('Delete category'),
           content: const Text(
-            'Are you sure you want to delete this category? '
-            'You cannot delete categories that still contain documents.',
+            'You cannot delete a category that still contains documents.',
           ),
           actions: [
             TextButton(
               onPressed: () => Navigator.of(ctx).pop(false),
               child: const Text('Cancel'),
             ),
-            TextButton(
+            FilledButton(
               onPressed: () => Navigator.of(ctx).pop(true),
               child: const Text('Delete'),
             ),
@@ -91,14 +91,14 @@ class _CategoryManagementScreenState extends State<CategoryManagementScreen> {
         );
       },
     );
-    if (confirmed != true) return;
+    if (confirmed != true || !context.mounted) return;
 
     final ok =
         await context.read<CategoryListProvider>().deleteCategory(category);
-    if (!ok && mounted) {
+    if (!ok && context.mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Cannot delete category that has documents.'),
+          content: Text('Cannot delete a category that has documents.'),
         ),
       );
     }
@@ -107,61 +107,105 @@ class _CategoryManagementScreenState extends State<CategoryManagementScreen> {
   @override
   Widget build(BuildContext context) {
     final provider = context.watch<CategoryListProvider>();
+    final scheme = Theme.of(context).colorScheme;
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Manage categories'),
+        title: const Text('Categories'),
       ),
       body: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Padding(
-            padding: const EdgeInsets.all(16),
-            child: Row(
-              children: [
-                Expanded(
-                  child: TextField(
-                    controller: _newCategoryController,
-                    decoration: const InputDecoration(
-                      labelText: 'New category name',
-                      border: OutlineInputBorder(),
+            padding: const EdgeInsets.fromLTRB(20, 20, 20, 12),
+            child: Card(
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: TextField(
+                        controller: _newCategoryController,
+                        textCapitalization: TextCapitalization.words,
+                        decoration: const InputDecoration(
+                          hintText: 'New category name',
+                          border: OutlineInputBorder(),
+                        ),
+                        onSubmitted: (_) => _addCategory(context),
+                      ),
                     ),
-                  ),
+                    const SizedBox(width: 12),
+                    FilledButton(
+                      onPressed: () => _addCategory(context),
+                      child: const Icon(Icons.add_rounded),
+                    ),
+                  ],
                 ),
-                const SizedBox(width: 8),
-                ElevatedButton(
-                  onPressed: () => _addCategory(context),
-                  child: const Text('Add'),
-                ),
-              ],
+              ),
             ),
           ),
           if (provider.isLoading)
-            const LinearProgressIndicator(minHeight: 2),
-          Expanded(
-            child: ListView.builder(
-              itemCount: provider.categories.length,
-              itemBuilder: (context, index) {
-                final category = provider.categories[index];
-                return ListTile(
-                  title: Text(category.name),
-                  subtitle: category.isDefault
-                      ? const Text(
-                          'Default',
-                          style: TextStyle(fontSize: 12),
-                        )
-                      : null,
-                  onTap: () => _renameCategory(context, category),
-                  trailing: IconButton(
-                    icon: const Icon(Icons.delete_outline),
-                    onPressed: () => _deleteCategory(context, category),
-                  ),
-                );
-              },
+            LinearProgressIndicator(
+              minHeight: 2,
+              color: scheme.primary,
             ),
+          Expanded(
+            child: provider.categories.isEmpty
+                ? Center(
+                    child: Padding(
+                      padding: const EdgeInsets.all(32),
+                      child: Text(
+                        'No categories yet. Add one above.',
+                        style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                              color: scheme.onSurfaceVariant,
+                            ),
+                        textAlign: TextAlign.center,
+                      ),
+                    ),
+                  )
+                : ListView.separated(
+                    padding: const EdgeInsets.fromLTRB(20, 8, 20, 28),
+                    itemCount: provider.categories.length,
+                    separatorBuilder: (context, index) =>
+                        const SizedBox(height: 8),
+                    itemBuilder: (context, index) {
+                      final category = provider.categories[index];
+                      return Card(
+                        child: ListTile(
+                          leading: CircleAvatar(
+                            backgroundColor:
+                                scheme.primaryContainer.withValues(alpha: 0.9),
+                            foregroundColor: scheme.onPrimaryContainer,
+                            child: const Icon(Icons.label_outline_rounded),
+                          ),
+                          title: Text(category.name),
+                          subtitle: category.isDefault
+                              ? Text(
+                                  'Default',
+                                  style: Theme.of(context)
+                                      .textTheme
+                                      .labelSmall
+                                      ?.copyWith(
+                                        color: scheme.tertiary,
+                                        letterSpacing: 0.06,
+                                      ),
+                                )
+                              : null,
+                          trailing: IconButton(
+                            icon: Icon(
+                              Icons.delete_outline_rounded,
+                              color: scheme.error.withValues(alpha: 0.85),
+                            ),
+                            onPressed: () => _deleteCategory(context, category),
+                          ),
+                          onTap: () => _renameCategory(context, category),
+                        ),
+                      );
+                    },
+                  ),
           ),
         ],
       ),
     );
   }
 }
-

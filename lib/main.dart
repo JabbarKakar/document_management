@@ -7,6 +7,8 @@ import 'core/auth/auth_manager.dart';
 import 'core/init/app_init_result.dart';
 import 'core/init/app_initializer.dart';
 import 'core/providers/app_init_provider.dart';
+import 'core/providers/theme_controller.dart';
+import 'core/theme/app_theme.dart';
 import 'core/encryption/vault_encryption_service.dart';
 import 'core/services/encrypted_file_storage_service.dart';
 import 'core/services/expiry_reminder_service.dart';
@@ -25,10 +27,13 @@ Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
   final initializer = AppInitializer();
+  final themeController = ThemeController(SecureStorageService());
+  await themeController.load();
 
   runApp(
     MultiProvider(
       providers: [
+        ChangeNotifierProvider<ThemeController>.value(value: themeController),
         Provider<AppInitializer>.value(value: initializer),
         ChangeNotifierProvider<AppInitProvider>(
           create: (_) => AppInitProvider(initializer)..initialize(),
@@ -44,12 +49,13 @@ class OfflineDocumentVaultApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final themeMode = context.watch<ThemeController>().themeMode;
     return MaterialApp(
-      title: 'Offline Personal Document Vault',
-      theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
-        useMaterial3: true,
-      ),
+      title: 'Document Vault',
+      debugShowCheckedModeBanner: false,
+      theme: AppTheme.light,
+      darkTheme: AppTheme.dark,
+      themeMode: themeMode,
       home: const _AppInitGate(),
     );
   }
@@ -235,38 +241,55 @@ class _InitErrorScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final textTheme = Theme.of(context).textTheme;
     return Scaffold(
       body: Center(
         child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              const Icon(Icons.error_outline, size: 48, color: Colors.red),
-              const SizedBox(height: 16),
-              const Text(
-                'Unable to start the vault.',
-                textAlign: TextAlign.center,
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-              ),
-              const SizedBox(height: 8),
-              const Text(
-                'Please try again. If the problem persists, restart the app.',
-                textAlign: TextAlign.center,
-              ),
-              const SizedBox(height: 16),
-              if (result?.fatalError != null)
-                Text(
-                  result!.fatalError.toString(),
-                  textAlign: TextAlign.center,
-                  style: const TextStyle(fontSize: 12, color: Colors.grey),
+          padding: const EdgeInsets.all(28),
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 400),
+            child: Card(
+              child: Padding(
+                padding: const EdgeInsets.all(28),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.cloud_off_rounded, size: 52, color: scheme.error),
+                    const SizedBox(height: 20),
+                    Text(
+                      'Cannot start vault',
+                      textAlign: TextAlign.center,
+                      style: textTheme.headlineSmall,
+                    ),
+                    const SizedBox(height: 12),
+                    Text(
+                      'Please try again. If this keeps happening, restart the app.',
+                      textAlign: TextAlign.center,
+                      style: textTheme.bodyMedium?.copyWith(
+                        color: scheme.onSurfaceVariant,
+                      ),
+                    ),
+                    if (result?.fatalError != null) ...[
+                      const SizedBox(height: 16),
+                      Text(
+                        result!.fatalError.toString(),
+                        textAlign: TextAlign.center,
+                        style: textTheme.bodySmall?.copyWith(
+                          color: scheme.outline,
+                        ),
+                      ),
+                    ],
+                    const SizedBox(height: 28),
+                    FilledButton.icon(
+                      onPressed: onRetry,
+                      icon: const Icon(Icons.refresh_rounded),
+                      label: const Text('Retry'),
+                    ),
+                  ],
                 ),
-              const SizedBox(height: 24),
-              ElevatedButton(
-                onPressed: onRetry,
-                child: const Text('Retry'),
               ),
-            ],
+            ),
           ),
         ),
       ),

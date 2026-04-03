@@ -72,7 +72,8 @@ class _EditDocumentScreenState extends State<EditDocumentScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
+    final scheme = Theme.of(context).colorScheme;
+    final textTheme = Theme.of(context).textTheme;
     final categories = context.watch<CategoryListProvider>().categories;
 
     return Scaffold(
@@ -80,140 +81,176 @@ class _EditDocumentScreenState extends State<EditDocumentScreen> {
         title: const Text('Add document'),
       ),
       body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.fromLTRB(20, 16, 20, 100),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            TextField(
-              controller: _titleController,
-              decoration: const InputDecoration(
-                labelText: 'Title',
-                border: OutlineInputBorder(),
-              ),
+            Text(
+              'Details',
+              style: textTheme.titleMedium,
             ),
-            const SizedBox(height: 16),
-            if (categories.isNotEmpty)
-              DropdownButtonFormField<VaultCategory?>(
-                value: _selectedCategory,
-                items: [
-                  const DropdownMenuItem<VaultCategory?>(
-                    value: null,
-                    child: Text('No category'),
-                  ),
-                  ...categories.map(
-                    (c) => DropdownMenuItem<VaultCategory?>(
-                      value: c,
-                      child: Text(c.name),
-                    ),
-                  ),
-                ],
-                onChanged: (value) {
-                  setState(() {
-                    _selectedCategory = value;
-                  });
-                },
-                decoration: const InputDecoration(
-                  labelText: 'Category',
-                  border: OutlineInputBorder(),
-                ),
-              ),
-            if (categories.isNotEmpty) const SizedBox(height: 16),
-            Row(
-              children: [
-                Expanded(
-                  child: OutlinedButton.icon(
-                    onPressed: () async {
-                      final result = await _picker.pickFromGallery();
-                      if (result != null) {
-                        setState(() {
-                          _pickedFile = result;
-                        });
-                      }
-                    },
-                    icon: const Icon(Icons.photo_library_outlined),
-                    label: const Text('Gallery'),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: OutlinedButton.icon(
-                    onPressed: () async {
-                      final result = await _picker.captureFromCamera();
-                      if (result != null) {
-                        setState(() {
-                          _pickedFile = result;
-                        });
-                      }
-                    },
-                    icon: const Icon(Icons.photo_camera_outlined),
-                    label: const Text('Camera'),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            OutlinedButton.icon(
-              onPressed: () async {
-                final result = await _picker.pickPdf();
-                if (result != null) {
-                  setState(() {
-                    _pickedFile = result;
-                  });
-                }
-              },
-              icon: const Icon(Icons.picture_as_pdf_outlined),
-              label: const Text('Import PDF'),
-            ),
-            const SizedBox(height: 8),
-            if (_pickedFile != null)
-              Container(
-                width: double.infinity,
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                decoration: BoxDecoration(
-                  color: theme.colorScheme.surfaceVariant.withOpacity(0.4),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Row(
+            const SizedBox(height: 12),
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(
                   children: [
-                    Icon(
-                      _pickedFile!.fileType == VaultDocumentFileType.pdf
-                          ? Icons.picture_as_pdf
-                          : Icons.image_outlined,
+                    TextField(
+                      controller: _titleController,
+                      textCapitalization: TextCapitalization.sentences,
+                      decoration: const InputDecoration(
+                        labelText: 'Title',
+                      ),
                     ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        _pickedFile!.fileName,
-                        overflow: TextOverflow.ellipsis,
+                    if (categories.isNotEmpty) ...[
+                      const SizedBox(height: 16),
+                      DropdownButtonFormField<VaultCategory?>(
+                        value: _selectedCategory,
+                        items: [
+                          const DropdownMenuItem<VaultCategory?>(
+                            value: null,
+                            child: Text('No category'),
+                          ),
+                          ...categories.map(
+                            (c) => DropdownMenuItem<VaultCategory?>(
+                              value: c,
+                              child: Text(c.name),
+                            ),
+                          ),
+                        ],
+                        onChanged: (value) {
+                          setState(() {
+                            _selectedCategory = value;
+                          });
+                        },
+                        decoration: const InputDecoration(
+                          labelText: 'Category',
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 24),
+            Text(
+              'File',
+              style: textTheme.titleMedium,
+            ),
+            const SizedBox(height: 12),
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Row(
+                      children: [
+                        Expanded(
+                          child: OutlinedButton.icon(
+                            onPressed: () async {
+                              final result = await _picker.pickFromGallery();
+                              if (result != null) {
+                                setState(() => _pickedFile = result);
+                              }
+                            },
+                            icon: const Icon(Icons.photo_library_outlined),
+                            label: const Text('Gallery'),
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: OutlinedButton.icon(
+                            onPressed: () async {
+                              final result = await _picker.captureFromCamera();
+                              if (result != null) {
+                                setState(() => _pickedFile = result);
+                              }
+                            },
+                            icon: const Icon(Icons.photo_camera_outlined),
+                            label: const Text('Camera'),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 10),
+                    OutlinedButton.icon(
+                      onPressed: () async {
+                        final result = await _picker.pickPdf();
+                        if (result != null) {
+                          setState(() => _pickedFile = result);
+                        }
+                      },
+                      icon: const Icon(Icons.picture_as_pdf_outlined),
+                      label: const Text('Import PDF'),
+                    ),
+                    if (_pickedFile != null) ...[
+                      const SizedBox(height: 14),
+                      Material(
+                        color: scheme.surfaceContainerHighest
+                            .withValues(alpha: 0.65),
+                        borderRadius: BorderRadius.circular(14),
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 14,
+                            vertical: 12,
+                          ),
+                          child: Row(
+                            children: [
+                              Icon(
+                                _pickedFile!.fileType == VaultDocumentFileType.pdf
+                                    ? Icons.picture_as_pdf_rounded
+                                    : Icons.image_outlined,
+                                color: scheme.primary,
+                              ),
+                              const SizedBox(width: 10),
+                              Expanded(
+                                child: Text(
+                                  _pickedFile!.fileName,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 24),
+            Text(
+              'Expiry & notes',
+              style: textTheme.titleMedium,
+            ),
+            const SizedBox(height: 12),
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    OutlinedButton.icon(
+                      onPressed: _pickExpiryDate,
+                      icon: const Icon(Icons.event_rounded),
+                      label: Text(
+                        _expiryDate == null
+                            ? 'Expiry date (optional)'
+                            : 'Expires ${_expiryDate!.toLocal().toString().split(' ').first}',
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    TextField(
+                      controller: _notesController,
+                      maxLines: 3,
+                      textCapitalization: TextCapitalization.sentences,
+                      decoration: const InputDecoration(
+                        labelText: 'Notes (optional)',
                       ),
                     ),
                   ],
                 ),
-              ),
-            const SizedBox(height: 16),
-            Row(
-              children: [
-                Expanded(
-                  child: OutlinedButton.icon(
-                    onPressed: _pickExpiryDate,
-                    icon: const Icon(Icons.event_outlined),
-                    label: Text(
-                      _expiryDate == null
-                          ? 'Set expiry (optional)'
-                          : 'Expires: ${_expiryDate!.toLocal().toString().split(' ').first}',
-                    ),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 16),
-            TextField(
-              controller: _notesController,
-              maxLines: 3,
-              decoration: const InputDecoration(
-                labelText: 'Notes (optional)',
-                border: OutlineInputBorder(),
               ),
             ),
           ],
@@ -221,25 +258,24 @@ class _EditDocumentScreenState extends State<EditDocumentScreen> {
       ),
       bottomNavigationBar: SafeArea(
         child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: SizedBox(
-            width: double.infinity,
-            child: ElevatedButton.icon(
-              onPressed:
-                  _isSaving || _pickedFile == null ? null : () => _save(),
-              icon: _isSaving
-                  ? const SizedBox(
-                      width: 16,
-                      height: 16,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                  : const Icon(Icons.check),
-              label: Text(_isSaving ? 'Saving...' : 'Save document'),
-            ),
+          padding: const EdgeInsets.fromLTRB(20, 8, 20, 16),
+          child: FilledButton.icon(
+            onPressed:
+                _isSaving || _pickedFile == null ? null : () => _save(),
+            icon: _isSaving
+                ? SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: scheme.onPrimary,
+                    ),
+                  )
+                : const Icon(Icons.check_rounded),
+            label: Text(_isSaving ? 'Saving…' : 'Save to vault'),
           ),
         ),
       ),
     );
   }
 }
-

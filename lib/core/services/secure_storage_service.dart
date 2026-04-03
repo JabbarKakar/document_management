@@ -16,7 +16,21 @@ class SecureStorageService {
   static const String _lockTimeoutKey = 'lock_timeout_seconds';
   static const String _biometricEnabledKey = 'biometric_enabled';
   static const String _expiryRemindersEnabledKey = 'expiry_reminders_enabled';
+  static const String _themeModeKey = 'theme_mode';
   static const int _defaultLockTimeoutSeconds = 60;
+
+  /// `system` | `light` | `dark`. Default system.
+  Future<String> getThemeModePreference() async {
+    final v = await _storage.read(key: _themeModeKey);
+    if (v == 'light' || v == 'dark' || v == 'system') {
+      return v!;
+    }
+    return 'system';
+  }
+
+  Future<void> setThemeModePreference(String mode) {
+    return _storage.write(key: _themeModeKey, value: mode);
+  }
 
   Future<String?> readEncryptionKey() {
     return _storage.read(key: _encryptionKeyKey);

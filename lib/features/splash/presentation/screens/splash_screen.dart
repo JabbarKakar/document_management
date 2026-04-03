@@ -18,13 +18,13 @@ class _SplashScreenState extends State<SplashScreen>
     super.initState();
     _controller = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 1200),
+      duration: const Duration(milliseconds: 1400),
     )..repeat(reverse: true);
 
-    _scaleAnimation = Tween<double>(begin: 0.95, end: 1.05).animate(
+    _scaleAnimation = Tween<double>(begin: 0.96, end: 1.04).animate(
       CurvedAnimation(parent: _controller, curve: Curves.easeInOut),
     );
-    _fadeAnimation = Tween<double>(begin: 0.6, end: 1).animate(
+    _fadeAnimation = Tween<double>(begin: 0.65, end: 1).animate(
       CurvedAnimation(parent: _controller, curve: Curves.easeInOut),
     );
   }
@@ -37,40 +37,33 @@ class _SplashScreenState extends State<SplashScreen>
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
+    final scheme = Theme.of(context).colorScheme;
+    final textTheme = Theme.of(context).textTheme;
 
     return Scaffold(
       body: Container(
-        decoration: const BoxDecoration(
+        decoration: BoxDecoration(
           gradient: LinearGradient(
-            colors: [Color(0xFF171C2A), Color(0xFF262B3D)],
+            colors: [
+              scheme.primaryContainer.withValues(alpha: 0.95),
+              scheme.surface,
+              scheme.secondaryContainer.withValues(alpha: 0.35),
+            ],
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
           ),
         ),
         child: Stack(
           children: [
-            Align(
-              alignment: const Alignment(-1.1, -1.1),
-              child: Container(
-                width: 220,
-                height: 220,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: Colors.deepPurple.withOpacity(0.18),
-                ),
-              ),
+            Positioned(
+              top: -60,
+              right: -40,
+              child: _Glow(180, scheme.tertiary.withValues(alpha: 0.2)),
             ),
-            Align(
-              alignment: const Alignment(1.2, 1.2),
-              child: Container(
-                width: 260,
-                height: 260,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: Colors.blueAccent.withOpacity(0.18),
-                ),
-              ),
+            Positioned(
+              bottom: -80,
+              left: -50,
+              child: _Glow(220, scheme.primary.withValues(alpha: 0.18)),
             ),
             Center(
               child: FadeTransition(
@@ -79,75 +72,71 @@ class _SplashScreenState extends State<SplashScreen>
                   scale: _scaleAnimation,
                   child: Container(
                     padding: const EdgeInsets.symmetric(
-                      horizontal: 32,
-                      vertical: 28,
+                      horizontal: 36,
+                      vertical: 32,
                     ),
                     decoration: BoxDecoration(
-                      color: Colors.black.withOpacity(0.35),
-                      borderRadius: BorderRadius.circular(24),
+                      color: scheme.surface.withValues(alpha: 0.82),
+                      borderRadius: BorderRadius.circular(28),
                       border: Border.all(
-                        color: Colors.white.withOpacity(0.08),
+                        color: scheme.outlineVariant.withValues(alpha: 0.6),
                       ),
                       boxShadow: [
                         BoxShadow(
-                          color: Colors.black.withOpacity(0.45),
-                          blurRadius: 30,
-                          offset: const Offset(0, 18),
+                          color: Colors.black.withValues(alpha: 0.08),
+                          blurRadius: 40,
+                          offset: const Offset(0, 20),
                         ),
                       ],
                     ),
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
-                      crossAxisAlignment: CrossAxisAlignment.center,
                       children: [
                         Container(
-                          width: 72,
-                          height: 72,
+                          width: 76,
+                          height: 76,
                           decoration: BoxDecoration(
                             shape: BoxShape.circle,
-                            gradient: const LinearGradient(
-                              colors: [Color(0xFF6C63FF), Color(0xFF42A5F5)],
+                            gradient: LinearGradient(
+                              colors: [
+                                scheme.primary,
+                                scheme.tertiary,
+                              ],
                               begin: Alignment.topLeft,
                               end: Alignment.bottomRight,
                             ),
                           ),
-                          child: const Center(
-                            child: Icon(
-                              Icons.lock_outline_rounded,
-                              color: Colors.white,
-                              size: 34,
-                            ),
+                          child: Icon(
+                            Icons.lock_person_rounded,
+                            color: scheme.onPrimary,
+                            size: 38,
                           ),
                         ),
-                        const SizedBox(height: 20),
+                        const SizedBox(height: 22),
                         Text(
-                          'Offline Personal Vault',
+                          'Document Vault',
                           textAlign: TextAlign.center,
-                          style: theme.textTheme.titleLarge?.copyWith(
-                            color: Colors.white,
-                            fontWeight: FontWeight.w600,
-                            letterSpacing: 0.4,
-                          ),
+                          style: textTheme.headlineSmall,
                         ),
-                        const SizedBox(height: 8),
+                        const SizedBox(height: 10),
                         Text(
-                          'Encrypting your space,\npreparing your documents…',
+                          'Securing your library…',
                           textAlign: TextAlign.center,
-                          style: theme.textTheme.bodyMedium?.copyWith(
-                            color: Colors.white.withOpacity(0.78),
+                          style: textTheme.bodyMedium?.copyWith(
+                            color: scheme.onSurfaceVariant,
                           ),
                         ),
-                        const SizedBox(height: 24),
+                        const SizedBox(height: 26),
                         SizedBox(
-                          width: 120,
+                          width: 132,
                           child: ClipRRect(
                             borderRadius: BorderRadius.circular(999),
                             child: LinearProgressIndicator(
                               minHeight: 4,
                               backgroundColor:
-                                  Colors.white.withOpacity(0.15),
-                              valueColor: const AlwaysStoppedAnimation<Color>(
-                                Color(0xFF6C63FF),
+                                  scheme.surfaceContainerHighest,
+                              valueColor: AlwaysStoppedAnimation<Color>(
+                                scheme.primary,
                               ),
                             ),
                           ),
@@ -165,3 +154,23 @@ class _SplashScreenState extends State<SplashScreen>
   }
 }
 
+class _Glow extends StatelessWidget {
+  const _Glow(this.size, this.color);
+
+  final double size;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return IgnorePointer(
+      child: Container(
+        width: size,
+        height: size,
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          color: color,
+        ),
+      ),
+    );
+  }
+}

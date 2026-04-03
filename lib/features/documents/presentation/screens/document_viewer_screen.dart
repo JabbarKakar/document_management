@@ -115,7 +115,8 @@ class _DocumentViewerScreenState extends State<DocumentViewerScreen> {
         ),
         actions: [
           IconButton(
-            icon: const Icon(Icons.ios_share),
+            icon: const Icon(Icons.share_rounded),
+            tooltip: 'Share',
             onPressed: _loading || _error != null ? null : () => _share(),
           ),
         ],

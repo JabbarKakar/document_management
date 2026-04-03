@@ -21,6 +21,8 @@ class DocumentListProvider extends ChangeNotifier {
 
   bool get isLoading => _isLoading;
   List<VaultDocument> get documents => _documents;
+  String get searchQuery => _currentQuery;
+  int? get categoryFilter => _currentCategoryFilter;
 
   Future<void> loadDocuments() async {
     _isLoading = true;
@@ -31,13 +33,17 @@ class DocumentListProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> applySearch({
-    String? query,
-    int? categoryId,
-  }) async {
-    _currentQuery = query ?? '';
-    _currentCategoryFilter = categoryId;
+  Future<void> setSearchQuery(String query) async {
+    _currentQuery = query;
+    await _runFilteredQuery();
+  }
 
+  Future<void> setCategoryFilter(int? categoryId) async {
+    _currentCategoryFilter = categoryId;
+    await _runFilteredQuery();
+  }
+
+  Future<void> _runFilteredQuery() async {
     _isLoading = true;
     notifyListeners();
 
