@@ -212,6 +212,7 @@ class VaultDocumentListCard extends StatelessWidget {
     super.key,
     required this.document,
     required this.onOpen,
+    this.onDetails,
     required this.onEdit,
     required this.onDelete,
     this.selectionMode = false,
@@ -222,6 +223,7 @@ class VaultDocumentListCard extends StatelessWidget {
 
   final VaultDocument document;
   final VoidCallback onOpen;
+  final VoidCallback? onDetails;
   final VoidCallback onEdit;
   final VoidCallback onDelete;
   final bool selectionMode;
@@ -310,6 +312,14 @@ class VaultDocumentListCard extends StatelessWidget {
             : Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
+                  IconButton(
+                    icon: Icon(
+                      Icons.info_outline_rounded,
+                      color: scheme.onSurfaceVariant.withValues(alpha: 0.92),
+                    ),
+                    tooltip: 'Details',
+                    onPressed: onDetails,
+                  ),
                   IconButton(
                     icon: Icon(
                       Icons.edit_outlined,

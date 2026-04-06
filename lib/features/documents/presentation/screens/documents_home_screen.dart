@@ -1,5 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:path/path.dart' as p;
+import 'package:path_provider/path_provider.dart';
 import 'package:provider/provider.dart';
+import 'package:share_plus/share_plus.dart';
+import 'dart:io';
 
 import '../../../../core/providers/theme_controller.dart';
 import '../../../../core/services/encrypted_file_storage_service.dart';
@@ -11,6 +15,7 @@ import '../../../settings/presentation/screens/settings_screen.dart';
 import '../../domain/entities/vault_document.dart';
 import '../../domain/vault_document_sort.dart';
 import '../providers/document_list_provider.dart';
+import '../widgets/document_details_sheet.dart';
 import '../widgets/document_filters_sheet.dart';
 import 'document_viewer_screen.dart';
 import 'edit_document_screen.dart';
@@ -56,6 +61,55 @@ class _DocumentsHomeScreenState extends State<DocumentsHomeScreen> {
           child: EditDocumentScreen(existing: doc),
         ),
       ),
+    );
+  }
+
+  void _openViewer(VaultDocument doc) {
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => Provider<EncryptedFileStorageService>.value(
+          value: context.read<EncryptedFileStorageService>(),
+          child: DocumentViewerScreen(document: doc),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _shareDocument(VaultDocument doc) async {
+    final path = doc.filePath;
+    if (path.isEmpty || !File(path).existsSync()) return;
+
+    final storage = context.read<EncryptedFileStorageService>();
+    final bytes = await storage.readDecryptedBytes(path);
+    final title = doc.title.trim();
+    final ext = p.extension(path);
+    final fallbackExt = doc.fileType == VaultDocumentFileType.pdf ? '.pdf' : '.bin';
+    final shareExt = ext.isNotEmpty ? ext : fallbackExt;
+    final tempDir = await getTemporaryDirectory();
+    final safeTitle = title.isEmpty
+        ? 'document'
+        : title.replaceAll(RegExp(r'[^a-zA-Z0-9_.-]'), '_');
+    final outPath = p.join(tempDir.path, '$safeTitle$shareExt');
+    final outFile = File(outPath);
+    await outFile.writeAsBytes(bytes, flush: true);
+
+    if (!mounted) return;
+    await SharePlus.instance.share(
+      ShareParams(
+        files: [XFile(outFile.path)],
+        text: title.isEmpty ? null : title,
+      ),
+    );
+  }
+
+  void _openDetailsSheet(VaultDocument doc) {
+    showDocumentDetailsSheet(
+      context,
+      document: doc,
+      onOpen: () => _openViewer(doc),
+      onEdit: () => _pushEditScreen(context, doc),
+      onDelete: () => context.read<DocumentListProvider>().deleteDocument(doc),
+      onShare: () => _shareDocument(doc),
     );
   }
 
@@ -430,16 +484,7 @@ class _DocumentsHomeScreenState extends State<DocumentsHomeScreen> {
                         _toggleSelection(doc.id);
                         return;
                       }
-                      Navigator.of(context).push(
-                        MaterialPageRoute<void>(
-                          builder: (_) =>
-                              Provider<EncryptedFileStorageService>.value(
-                                value: context
-                                    .read<EncryptedFileStorageService>(),
-                                child: DocumentViewerScreen(document: doc),
-                              ),
-                        ),
-                      );
+                      _openViewer(doc);
                     },
                     onEdit: () {
                       if (_selectionMode) {
@@ -455,6 +500,7 @@ class _DocumentsHomeScreenState extends State<DocumentsHomeScreen> {
                       }
                       provider.deleteDocument(doc);
                     },
+                    onDetails: _selectionMode ? null : () => _openDetailsSheet(doc),
                     selectionMode: _selectionMode,
                     selected: isSelected,
                     onToggleSelected: () => _toggleSelection(doc.id),
