@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 
 import '../../../../core/services/expiry_reminder_service.dart';
 import '../../../../core/services/secure_storage_service.dart';
+import '../../../../core/services/document_thumbnail_cache_service.dart';
 import '../../data/services/document_file_picker.dart';
 import '../../domain/document_sorting.dart';
 import '../../domain/entities/vault_document.dart';
@@ -14,11 +15,13 @@ class DocumentListProvider extends ChangeNotifier {
     this._repository,
     this._expiryReminders,
     this._secureStorage,
+    this._thumbnailCache,
   );
 
   final DocumentRepository _repository;
   final ExpiryReminderService _expiryReminders;
   final SecureStorageService _secureStorage;
+  final DocumentThumbnailCacheService _thumbnailCache;
 
   bool _isLoading = false;
   List<VaultDocument> _documents = [];
@@ -219,6 +222,7 @@ class DocumentListProvider extends ChangeNotifier {
       await _expiryReminders.cancelForDocument(doc.id);
       await _expiryReminders.deleteNotificationPreviewForDocument(doc.id);
       await _repository.deleteDocument(doc);
+      _thumbnailCache.removeByDocument(doc.id);
     }
     await _runFilteredQuery();
   }
@@ -230,6 +234,7 @@ class DocumentListProvider extends ChangeNotifier {
     await _expiryReminders.cancelForDocument(document.id);
     await _expiryReminders.deleteNotificationPreviewForDocument(document.id);
     await _repository.deleteDocument(document);
+    _thumbnailCache.removeByDocument(document.id);
     await _runFilteredQuery();
   }
 }

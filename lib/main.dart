@@ -12,6 +12,7 @@ import 'core/theme/app_theme.dart';
 import 'core/encryption/vault_encryption_service.dart';
 import 'core/services/encrypted_file_storage_service.dart';
 import 'core/services/expiry_reminder_service.dart';
+import 'core/services/document_thumbnail_cache_service.dart';
 import 'core/services/secure_storage_service.dart';
 import 'features/auth/presentation/providers/auth_state_provider.dart';
 import 'features/auth/presentation/screens/create_pin_screen.dart';
@@ -124,6 +125,7 @@ class _AppInitGateState extends State<_AppInitGate> {
           secureStorage: initializer.secureStorage,
           fileStorage: fileStorage,
         );
+        final thumbnailCache = DocumentThumbnailCacheService();
 
         // Providers must stay above [_AuthGate] so locking (swap to [LockScreen])
         // does not dispose [DocumentListProvider] while pushed routes (e.g. add
@@ -134,6 +136,7 @@ class _AppInitGateState extends State<_AppInitGate> {
             Provider<EncryptedFileStorageService>.value(value: fileStorage),
             Provider<SecureStorageService>.value(value: initializer.secureStorage),
             Provider<ExpiryReminderService>.value(value: expiryReminders),
+            Provider<DocumentThumbnailCacheService>.value(value: thumbnailCache),
             ChangeNotifierProvider<DocumentListProvider>(
               create: (_) {
                 final list = DocumentListProvider(
@@ -143,6 +146,7 @@ class _AppInitGateState extends State<_AppInitGate> {
                   ),
                   expiryReminders,
                   initializer.secureStorage,
+                  thumbnailCache,
                 );
                 list.startup();
                 return list;

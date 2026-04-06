@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:pdfx/pdfx.dart';
 import 'package:provider/provider.dart';
 
+import '../../../../core/services/document_thumbnail_cache_service.dart';
 import '../../../../core/services/encrypted_file_storage_service.dart';
 import '../../domain/entities/vault_document.dart';
 import '../../domain/expiry_calendar.dart';
@@ -67,6 +68,30 @@ Future<Uint8List?> _renderPdfFirstPageThumb(Uint8List pdfBytes) async {
   }
 }
 
+Future<Uint8List?> _renderImageThumbBytes(
+  Uint8List imageBytes, {
+  required int targetWidth,
+}) async {
+  ui.Codec? codec;
+  ui.Image? image;
+  try {
+    codec = await ui.instantiateImageCodec(
+      imageBytes,
+      targetWidth: targetWidth,
+    );
+    final frame = await codec.getNextFrame();
+    image = frame.image;
+    final data = await image.toByteData(format: ui.ImageByteFormat.png);
+    if (data == null) return null;
+    return data.buffer.asUint8List();
+  } catch (_) {
+    return null;
+  } finally {
+    image?.dispose();
+    codec?.dispose();
+  }
+}
+
 IconData _fallbackIcon(VaultDocumentFileType t) {
   return switch (t) {
     VaultDocumentFileType.image => Icons.image_outlined,
@@ -103,48 +128,37 @@ class _VaultDocumentThumbnailState extends State<VaultDocumentThumbnail> {
   Future<void> _load() async {
     if (!mounted) return;
     final storage = context.read<EncryptedFileStorageService>();
+    final cache = context.read<DocumentThumbnailCacheService>();
     final logical = _logicalThumbSize(context).round();
+    final cacheKey = '${widget.document.id}|${widget.document.filePath}';
 
-    try {
-      final bytes =
-          await storage.readDecryptedBytes(widget.document.filePath);
-      if (!mounted) return;
-
-      if (_isPdfDocument(widget.document)) {
-        final jpeg = await _PdfThumbnailLock.run(
-          () => _renderPdfFirstPageThumb(bytes),
-        );
-        if (!mounted) return;
-        if (jpeg != null && jpeg.isNotEmpty) {
-          setState(() {
-            _thumbBytes = jpeg;
-            _loading = false;
-          });
-          return;
-        }
-      } else {
-        ui.Codec? codec;
+    final thumb = await cache.getOrLoad(
+      key: cacheKey,
+      loader: () async {
         try {
-          codec = await ui.instantiateImageCodec(
+          final bytes =
+              await storage.readDecryptedBytes(widget.document.filePath);
+          if (_isPdfDocument(widget.document)) {
+            return _PdfThumbnailLock.run(() => _renderPdfFirstPageThumb(bytes));
+          }
+          final pngThumb = await _renderImageThumbBytes(
             bytes,
             targetWidth: logical,
           );
-          final frame = await codec.getNextFrame();
-          frame.image.dispose();
-          if (!mounted) return;
-          setState(() {
-            _thumbBytes = bytes;
-            _loading = false;
-          });
-          return;
+          return pngThumb ?? bytes;
         } catch (_) {
-        } finally {
-          codec?.dispose();
+          return null;
         }
-      }
-    } catch (_) {}
+      },
+    );
 
-    if (mounted) {
+    if (!mounted) return;
+    if (thumb != null && thumb.isNotEmpty) {
+      setState(() {
+        _thumbBytes = thumb;
+        _loading = false;
+      });
+    } else {
       setState(() => _loading = false);
     }
   }
