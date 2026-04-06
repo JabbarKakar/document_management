@@ -1,11 +1,8 @@
 import 'package:flutter/material.dart';
-import 'package:path/path.dart' as p;
-import 'package:path_provider/path_provider.dart';
 import 'package:provider/provider.dart';
-import 'package:share_plus/share_plus.dart';
-import 'dart:io';
 
 import '../../../../core/providers/theme_controller.dart';
+import '../../../../core/services/document_export_service.dart';
 import '../../../../core/services/encrypted_file_storage_service.dart';
 import '../../../../core/services/expiry_reminder_service.dart';
 import '../../../../core/services/secure_storage_service.dart';
@@ -31,6 +28,7 @@ class DocumentsHomeScreen extends StatefulWidget {
 class _DocumentsHomeScreenState extends State<DocumentsHomeScreen> {
   late final TextEditingController _searchController;
   final Set<int> _selectedIds = <int>{};
+  bool _isExporting = false;
 
   bool get _selectionMode => _selectedIds.isNotEmpty;
 
@@ -75,31 +73,77 @@ class _DocumentsHomeScreenState extends State<DocumentsHomeScreen> {
     );
   }
 
-  Future<void> _shareDocument(VaultDocument doc) async {
-    final path = doc.filePath;
-    if (path.isEmpty || !File(path).existsSync()) return;
-
-    final storage = context.read<EncryptedFileStorageService>();
-    final bytes = await storage.readDecryptedBytes(path);
-    final title = doc.title.trim();
-    final ext = p.extension(path);
-    final fallbackExt = doc.fileType == VaultDocumentFileType.pdf ? '.pdf' : '.bin';
-    final shareExt = ext.isNotEmpty ? ext : fallbackExt;
-    final tempDir = await getTemporaryDirectory();
-    final safeTitle = title.isEmpty
-        ? 'document'
-        : title.replaceAll(RegExp(r'[^a-zA-Z0-9_.-]'), '_');
-    final outPath = p.join(tempDir.path, '$safeTitle$shareExt');
-    final outFile = File(outPath);
-    await outFile.writeAsBytes(bytes, flush: true);
-
-    if (!mounted) return;
-    await SharePlus.instance.share(
-      ShareParams(
-        files: [XFile(outFile.path)],
-        text: title.isEmpty ? null : title,
+  Future<bool> _confirmExportCount(int count) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(count == 1 ? 'Export document?' : 'Export $count documents?'),
+        content: const Text(
+          'Exported files are decrypted copies and will be saved unencrypted outside the vault.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('Export'),
+          ),
+        ],
       ),
     );
+    return ok == true;
+  }
+
+  Future<void> _exportDocuments(List<VaultDocument> docs) async {
+    if (docs.isEmpty || _isExporting) return;
+    if (!await _confirmExportCount(docs.length)) return;
+    if (!mounted) return;
+
+    final exportService = context.read<DocumentExportService>();
+    final storage = context.read<EncryptedFileStorageService>();
+    setState(() => _isExporting = true);
+    final messenger = ScaffoldMessenger.of(context);
+    messenger.showSnackBar(
+      SnackBar(
+        content: Text(
+          docs.length == 1
+              ? 'Preparing export...'
+              : 'Preparing ${docs.length} exports...',
+        ),
+        duration: const Duration(seconds: 1),
+      ),
+    );
+
+    try {
+      await exportService.exportDocumentsViaShare(
+            documents: docs,
+            storage: storage,
+            message: docs.length == 1 ? docs.first.title.trim() : null,
+          );
+      if (!mounted) return;
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text(
+            docs.length == 1
+                ? 'Export sheet opened.'
+                : 'Export sheet opened for ${docs.length} documents.',
+          ),
+          duration: const Duration(seconds: 2),
+        ),
+      );
+    } catch (_) {
+      if (!mounted) return;
+      messenger.showSnackBar(
+        const SnackBar(
+          content: Text('Could not export files. Please try again.'),
+          duration: Duration(seconds: 2),
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _isExporting = false);
+    }
   }
 
   void _openDetailsSheet(VaultDocument doc) {
@@ -109,7 +153,7 @@ class _DocumentsHomeScreenState extends State<DocumentsHomeScreen> {
       onOpen: () => _openViewer(doc),
       onEdit: () => _pushEditScreen(context, doc),
       onDelete: () => context.read<DocumentListProvider>().deleteDocument(doc),
-      onShare: () => _shareDocument(doc),
+      onExport: () => _exportDocuments([doc]),
     );
   }
 
@@ -272,6 +316,13 @@ class _DocumentsHomeScreenState extends State<DocumentsHomeScreen> {
                   onPressed: selectedVisibleDocs.isEmpty
                       ? null
                       : () => _openBatchCategorySheet(selectedVisibleDocs),
+                ),
+                IconButton(
+                  tooltip: _isExporting ? 'Exporting...' : 'Export selected',
+                  icon: const Icon(Icons.ios_share_rounded),
+                  onPressed: selectedVisibleDocs.isEmpty || _isExporting
+                      ? null
+                      : () => _exportDocuments(selectedVisibleDocs),
                 ),
                 IconButton(
                   tooltip: 'Delete selected',

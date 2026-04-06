@@ -10,7 +10,7 @@ Future<void> showDocumentDetailsSheet(
   required VoidCallback onOpen,
   required VoidCallback onEdit,
   required VoidCallback onDelete,
-  required VoidCallback onShare,
+  required VoidCallback onExport,
 }) {
   return showModalBottomSheet<void>(
     context: context,
@@ -23,7 +23,7 @@ Future<void> showDocumentDetailsSheet(
         onOpen: onOpen,
         onEdit: onEdit,
         onDelete: onDelete,
-        onShare: onShare,
+        onExport: onExport,
       ),
     ),
   );
@@ -35,14 +35,14 @@ class _DocumentDetailsSheet extends StatelessWidget {
     required this.onOpen,
     required this.onEdit,
     required this.onDelete,
-    required this.onShare,
+    required this.onExport,
   });
 
   final VaultDocument document;
   final VoidCallback onOpen;
   final VoidCallback onEdit;
   final VoidCallback onDelete;
-  final VoidCallback onShare;
+  final VoidCallback onExport;
 
   static String _fmtDate(DateTime date) {
     final local = date.toLocal();
@@ -157,10 +157,10 @@ class _DocumentDetailsSheet extends StatelessWidget {
                 FilledButton.tonalIcon(
                   onPressed: () {
                     Navigator.of(context).pop();
-                    onShare();
+                    onExport();
                   },
-                  icon: const Icon(Icons.share_rounded),
-                  label: const Text('Share'),
+                  icon: const Icon(Icons.ios_share_rounded),
+                  label: const Text('Export'),
                 ),
                 FilledButton.tonalIcon(
                   onPressed: () {
