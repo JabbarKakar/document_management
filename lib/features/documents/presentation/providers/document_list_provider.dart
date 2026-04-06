@@ -1,4 +1,5 @@
 import 'package:flutter/foundation.dart';
+import 'package:path/path.dart' as p;
 
 import '../../../../core/services/expiry_reminder_service.dart';
 import '../../../../core/services/secure_storage_service.dart';
@@ -173,6 +174,59 @@ class DocumentListProvider extends ChangeNotifier {
     await _runFilteredQuery();
   }
 
+  Future<BulkImportReport> importDocumentsFromPickerFiles({
+    required List<PickedDocumentFile> files,
+    int? categoryId,
+    void Function({
+      required int completed,
+      required int total,
+      required String fileName,
+    })? onProgress,
+  }) async {
+    if (files.isEmpty) {
+      return BulkImportReport(total: 0, succeeded: 0, failedNames: const []);
+    }
+
+    _isLoading = true;
+    notifyListeners();
+
+    var completed = 0;
+    var succeeded = 0;
+    final failed = <String>[];
+
+    for (final f in files) {
+      try {
+        final added = await _repository.addDocument(
+          title: _defaultTitleFromFileName(f.fileName),
+          fileBytes: f.bytes,
+          originalFileName: f.fileName,
+          fileType: f.fileType,
+          categoryId: categoryId,
+          expiryDate: null,
+          notes: null,
+        );
+        await _expiryReminders.rescheduleForDocument(added);
+        succeeded++;
+      } catch (_) {
+        failed.add(f.fileName);
+      } finally {
+        completed++;
+        onProgress?.call(
+          completed: completed,
+          total: files.length,
+          fileName: f.fileName,
+        );
+      }
+    }
+
+    await _runFilteredQuery();
+    return BulkImportReport(
+      total: files.length,
+      succeeded: succeeded,
+      failedNames: failed,
+    );
+  }
+
   Future<void> updateDocumentMetadata({
     required int id,
     required String title,
@@ -271,4 +325,21 @@ class DocumentListProvider extends ChangeNotifier {
     _thumbnailCache.removeByDocument(document.id);
     await _runFilteredQuery();
   }
+
+  String _defaultTitleFromFileName(String fileName) {
+    final name = p.basenameWithoutExtension(fileName).trim();
+    return name.isEmpty ? 'Imported document' : name;
+  }
+}
+
+class BulkImportReport {
+  BulkImportReport({
+    required this.total,
+    required this.succeeded,
+    required this.failedNames,
+  });
+
+  final int total;
+  final int succeeded;
+  final List<String> failedNames;
 }

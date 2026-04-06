@@ -7,8 +7,10 @@ import '../../../../core/services/encrypted_file_storage_service.dart';
 import '../../../../core/services/expiry_reminder_service.dart';
 import '../../../../core/services/secure_storage_service.dart';
 import '../../../auth/presentation/providers/auth_state_provider.dart';
+import '../../../categories/domain/entities/vault_category.dart';
 import '../../../categories/presentation/providers/category_list_provider.dart';
 import '../../../settings/presentation/screens/settings_screen.dart';
+import '../../data/services/document_file_picker.dart';
 import '../../domain/entities/vault_document.dart';
 import '../../domain/vault_document_sort.dart';
 import '../providers/document_list_provider.dart';
@@ -29,6 +31,8 @@ class _DocumentsHomeScreenState extends State<DocumentsHomeScreen> {
   late final TextEditingController _searchController;
   final Set<int> _selectedIds = <int>{};
   bool _isExporting = false;
+  bool _isImporting = false;
+  final _picker = DocumentFilePicker();
 
   bool get _selectionMode => _selectedIds.isNotEmpty;
 
@@ -144,6 +148,168 @@ class _DocumentsHomeScreenState extends State<DocumentsHomeScreen> {
     } finally {
       if (mounted) setState(() => _isExporting = false);
     }
+  }
+
+  Future<int?> _pickImportCategory(List<VaultCategory> categories) async {
+    final picked = await showModalBottomSheet<(bool, int?)>(
+      context: context,
+      showDragHandle: true,
+      builder: (context) {
+        return SafeArea(
+          child: ConstrainedBox(
+            constraints: BoxConstraints(
+              maxHeight: MediaQuery.sizeOf(context).height * 0.75,
+            ),
+            child: ListView(
+              shrinkWrap: true,
+              children: [
+                const ListTile(
+                  title: Text('Import category'),
+                  subtitle: Text('Optional category for all imported files'),
+                ),
+                ListTile(
+                  leading: const Icon(Icons.clear_rounded),
+                  title: const Text('No category'),
+                  onTap: () => Navigator.of(context).pop((true, null)),
+                ),
+                for (final c in categories)
+                  ListTile(
+                    leading: const Icon(Icons.label_outline_rounded),
+                    title: Text(c.name),
+                    onTap: () => Navigator.of(context).pop((true, c.id)),
+                  ),
+                const SizedBox(height: 8),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+    if (picked == null || picked.$1 != true) return null;
+    return picked.$2;
+  }
+
+  Future<void> _startBulkImport() async {
+    if (_isImporting) return;
+    final files = await _picker.pickMultipleForImport();
+    if (files.isEmpty || !mounted) return;
+
+    final categoryId = await _pickImportCategory(
+      context.read<CategoryListProvider>().categories,
+    );
+    if (!mounted) return;
+
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text('Import ${files.length} files?'),
+        content: Text(
+          categoryId == null
+              ? 'Files will be encrypted and added with no category.'
+              : 'Files will be encrypted and added to the chosen category.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('Import'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true || !mounted) return;
+
+    final progress = ValueNotifier<(int, int, String)>((0, files.length, 'Starting...'));
+    setState(() => _isImporting = true);
+    showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => PopScope(
+        canPop: false,
+        child: AlertDialog(
+          title: const Text('Importing files'),
+          content: ValueListenableBuilder<(int, int, String)>(
+            valueListenable: progress,
+            builder: (_, p, child) {
+              final done = p.$1;
+              final total = p.$2;
+              final current = p.$3;
+              final v = total == 0 ? 0.0 : done / total;
+              return Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('$done of $total'),
+                  const SizedBox(height: 10),
+                  LinearProgressIndicator(value: v),
+                  const SizedBox(height: 12),
+                  Text(
+                    current,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ],
+              );
+            },
+          ),
+        ),
+      ),
+    );
+
+    BulkImportReport? report;
+    Object? importError;
+    try {
+      report = await context.read<DocumentListProvider>().importDocumentsFromPickerFiles(
+            files: files,
+            categoryId: categoryId,
+            onProgress: ({
+              required int completed,
+              required int total,
+              required String fileName,
+            }) {
+              progress.value = (completed, total, fileName);
+            },
+          );
+    } catch (e) {
+      importError = e;
+    } finally {
+      progress.dispose();
+      if (mounted) {
+        Navigator.of(context, rootNavigator: true).pop(); // progress dialog
+        setState(() => _isImporting = false);
+      }
+    }
+
+    if (!mounted) return;
+    if (importError != null || report == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Import failed. Please try again.')),
+      );
+      return;
+    }
+    final r = report;
+
+    await showDialog<void>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Import finished'),
+        content: Text(
+          r.failedNames.isEmpty
+              ? 'Imported ${r.succeeded} of ${r.total} files successfully.'
+              : 'Imported ${r.succeeded} of ${r.total} files.\n'
+                  '${r.failedNames.length} failed.',
+        ),
+        actions: [
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('OK'),
+          ),
+        ],
+      ),
+    );
   }
 
   void _openDetailsSheet(VaultDocument doc) {
@@ -378,6 +544,11 @@ class _DocumentsHomeScreenState extends State<DocumentsHomeScreen> {
                     backgroundColor: scheme.primary,
                     child: const Icon(Icons.tune_rounded),
                   ),
+                ),
+                IconButton(
+                  tooltip: _isImporting ? 'Importing...' : 'Import files',
+                  icon: const Icon(Icons.file_upload_outlined),
+                  onPressed: _isImporting ? null : _startBulkImport,
                 ),
                 IconButton(
                   icon: const Icon(Icons.settings_outlined),
