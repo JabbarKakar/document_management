@@ -191,6 +191,40 @@ class DocumentListProvider extends ChangeNotifier {
     await _runFilteredQuery();
   }
 
+  /// Module 17: save metadata and optionally replace the encrypted file.
+  Future<void> saveExistingDocumentChanges({
+    required VaultDocument existing,
+    required String title,
+    int? categoryId,
+    DateTime? expiryDate,
+    String? notes,
+    PickedDocumentFile? replacementFile,
+  }) async {
+    _isLoading = true;
+    notifyListeners();
+
+    if (replacementFile != null) {
+      await _repository.replaceDocumentFile(
+        id: existing.id,
+        fileBytes: replacementFile.bytes,
+        originalFileName: replacementFile.fileName,
+        fileType: replacementFile.fileType,
+      );
+      _thumbnailCache.removeByDocument(existing.id);
+      await _expiryReminders.deleteNotificationPreviewForDocument(existing.id);
+    }
+
+    final updated = await _repository.updateDocumentMetadata(
+      id: existing.id,
+      title: title,
+      categoryId: categoryId,
+      expiryDate: expiryDate,
+      notes: notes,
+    );
+    await _expiryReminders.rescheduleForDocument(updated);
+    await _runFilteredQuery();
+  }
+
   /// Batch action (Module 12): set category for currently selected documents.
   Future<void> setCategoryForDocuments(
     List<VaultDocument> documents, {

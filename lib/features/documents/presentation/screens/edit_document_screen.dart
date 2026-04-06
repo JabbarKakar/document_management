@@ -107,14 +107,15 @@ class _EditDocumentScreenState extends State<EditDocumentScreen> {
     if (existing != null) {
       setState(() => _isSaving = true);
       try {
-        await context.read<DocumentListProvider>().updateDocumentMetadata(
-              id: existing.id,
+        await context.read<DocumentListProvider>().saveExistingDocumentChanges(
+              existing: existing,
               title: title,
               expiryDate: _expiryDate,
               notes: _notesController.text.trim().isEmpty
                   ? null
                   : _notesController.text.trim(),
               categoryId: _selectedCategory?.id,
+              replacementFile: _pickedFile,
             );
         if (mounted) Navigator.of(context).pop();
       } finally {
@@ -218,27 +219,111 @@ class _EditDocumentScreenState extends State<EditDocumentScreen> {
               Card(
                 child: Padding(
                   padding: const EdgeInsets.all(16),
-                  child: Row(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      Icon(
-                        widget.existing!.fileType == VaultDocumentFileType.pdf
-                            ? Icons.picture_as_pdf_rounded
-                            : widget.existing!.fileType ==
-                                    VaultDocumentFileType.image
-                                ? Icons.image_outlined
-                                : Icons.insert_drive_file_outlined,
-                        color: scheme.primary,
-                        size: 28,
+                      Row(
+                        children: [
+                          Icon(
+                            widget.existing!.fileType == VaultDocumentFileType.pdf
+                                ? Icons.picture_as_pdf_rounded
+                                : widget.existing!.fileType ==
+                                        VaultDocumentFileType.image
+                                    ? Icons.image_outlined
+                                    : Icons.insert_drive_file_outlined,
+                            color: scheme.primary,
+                            size: 28,
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Text(
+                              'Current encrypted file stays unless you choose a replacement below.',
+                              style: textTheme.bodySmall?.copyWith(
+                                color: scheme.onSurfaceVariant,
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Text(
-                          'This file is stored in your vault. Replace it by adding a new document.',
-                          style: textTheme.bodySmall?.copyWith(
-                            color: scheme.onSurfaceVariant,
+                      const SizedBox(height: 14),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: OutlinedButton.icon(
+                              onPressed: () async {
+                                final result = await _picker.pickFromGallery();
+                                if (result != null) {
+                                  setState(() => _pickedFile = result);
+                                }
+                              },
+                              icon: const Icon(Icons.photo_library_outlined),
+                              label: const Text('Replace from gallery'),
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: OutlinedButton.icon(
+                              onPressed: () async {
+                                final result =
+                                    await _picker.captureFromCamera();
+                                if (result != null) {
+                                  setState(() => _pickedFile = result);
+                                }
+                              },
+                              icon: const Icon(Icons.photo_camera_outlined),
+                              label: const Text('Replace by camera'),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 10),
+                      OutlinedButton.icon(
+                        onPressed: () async {
+                          final result = await _picker.pickPdf();
+                          if (result != null) {
+                            setState(() => _pickedFile = result);
+                          }
+                        },
+                        icon: const Icon(Icons.picture_as_pdf_outlined),
+                        label: const Text('Replace with PDF'),
+                      ),
+                      if (_pickedFile != null) ...[
+                        const SizedBox(height: 14),
+                        Material(
+                          color: scheme.surfaceContainerHighest
+                              .withValues(alpha: 0.65),
+                          borderRadius: BorderRadius.circular(14),
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 14,
+                              vertical: 12,
+                            ),
+                            child: Row(
+                              children: [
+                                Icon(
+                                  _pickedFile!.fileType ==
+                                          VaultDocumentFileType.pdf
+                                      ? Icons.picture_as_pdf_rounded
+                                      : Icons.image_outlined,
+                                  color: scheme.primary,
+                                ),
+                                const SizedBox(width: 10),
+                                Expanded(
+                                  child: Text(
+                                    _pickedFile!.fileName,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                                IconButton(
+                                  tooltip: 'Cancel replacement',
+                                  onPressed: () => setState(() => _pickedFile = null),
+                                  icon: const Icon(Icons.close_rounded),
+                                ),
+                              ],
+                            ),
                           ),
                         ),
-                      ),
+                      ],
                     ],
                   ),
                 ),

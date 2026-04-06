@@ -125,6 +125,17 @@ class _VaultDocumentThumbnailState extends State<VaultDocumentThumbnail> {
     WidgetsBinding.instance.addPostFrameCallback((_) => _load());
   }
 
+  @override
+  void didUpdateWidget(covariant VaultDocumentThumbnail oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.document.filePath != widget.document.filePath ||
+        oldWidget.document.fileType != widget.document.fileType) {
+      _thumbBytes = null;
+      _loading = true;
+      WidgetsBinding.instance.addPostFrameCallback((_) => _load());
+    }
+  }
+
   Future<void> _load() async {
     if (!mounted) return;
     final storage = context.read<EncryptedFileStorageService>();
@@ -273,7 +284,7 @@ class VaultDocumentListCard extends StatelessWidget {
           vertical: 8,
         ),
         leading: VaultDocumentThumbnail(
-          key: ValueKey<int>(document.id),
+          key: ValueKey<String>('${document.id}|${document.filePath}'),
           document: document,
         ),
         title: Text(

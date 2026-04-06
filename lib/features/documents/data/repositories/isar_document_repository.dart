@@ -108,6 +108,44 @@ class IsarDocumentRepository implements DocumentRepository {
   }
 
   @override
+  Future<VaultDocument> replaceDocumentFile({
+    required int id,
+    required Uint8List fileBytes,
+    required String originalFileName,
+    required VaultDocumentFileType fileType,
+  }) async {
+    final now = DateTime.now();
+    final newPath = await _fileStorageService.saveBytes(
+      bytes: fileBytes,
+      fileName: '${now.millisecondsSinceEpoch}_$originalFileName',
+    );
+
+    String? oldPath;
+    try {
+      final updated = await _isar.writeTxn<VaultDocumentModel>(() async {
+        final m = await _collection.get(id);
+        if (m == null) {
+          throw StateError('Document $id not found');
+        }
+        oldPath = m.filePath;
+        m.filePath = newPath;
+        m.fileType = fileType;
+        await _collection.put(m);
+        return m;
+      });
+
+      if (oldPath != null && oldPath != newPath) {
+        await _fileStorageService.deleteFile(oldPath!);
+      }
+      return updated.toEntity();
+    } catch (e) {
+      // Rollback best-effort: avoid leaving orphan encrypted files on failure.
+      await _fileStorageService.deleteFile(newPath);
+      rethrow;
+    }
+  }
+
+  @override
   Future<void> deleteDocument(VaultDocument document) async {
     await _fileStorageService.deleteFile(document.filePath);
     await _isar.writeTxn(() => _collection.delete(document.id));

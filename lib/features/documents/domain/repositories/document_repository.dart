@@ -28,6 +28,13 @@ abstract class DocumentRepository {
     String? notes,
   });
 
+  Future<VaultDocument> replaceDocumentFile({
+    required int id,
+    required Uint8List fileBytes,
+    required String originalFileName,
+    required VaultDocumentFileType fileType,
+  });
+
   Future<void> deleteDocument(VaultDocument document);
 }
 
