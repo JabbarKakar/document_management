@@ -25,6 +25,9 @@ class DocumentsHomeScreen extends StatefulWidget {
 
 class _DocumentsHomeScreenState extends State<DocumentsHomeScreen> {
   late final TextEditingController _searchController;
+  final Set<int> _selectedIds = <int>{};
+
+  bool get _selectionMode => _selectedIds.isNotEmpty;
 
   @override
   void initState() {
@@ -61,93 +64,252 @@ class _DocumentsHomeScreenState extends State<DocumentsHomeScreen> {
     await context.read<DocumentListProvider>().clearAllListFilters();
   }
 
+  void _toggleSelection(int id) {
+    setState(() {
+      if (_selectedIds.contains(id)) {
+        _selectedIds.remove(id);
+      } else {
+        _selectedIds.add(id);
+      }
+    });
+  }
+
+  void _clearSelection() {
+    if (_selectedIds.isEmpty) return;
+    setState(() => _selectedIds.clear());
+  }
+
+  void _syncSelectionWithVisible(List<VaultDocument> visible) {
+    if (_selectedIds.isEmpty) return;
+    final visibleIds = visible.map((d) => d.id).toSet();
+    if (_selectedIds.any((id) => !visibleIds.contains(id))) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        setState(() => _selectedIds.removeWhere((id) => !visibleIds.contains(id)));
+      });
+    }
+  }
+
+  List<VaultDocument> _selectedVisibleDocuments(List<VaultDocument> visible) {
+    if (_selectedIds.isEmpty) return const [];
+    return visible.where((d) => _selectedIds.contains(d.id)).toList();
+  }
+
+  void _selectAllVisible(List<VaultDocument> visible) {
+    setState(() {
+      _selectedIds
+        ..clear()
+        ..addAll(visible.map((d) => d.id));
+    });
+  }
+
+  Future<void> _confirmBatchDelete(List<VaultDocument> selected) async {
+    if (selected.isEmpty) return;
+    final count = selected.length;
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text('Delete $count documents?'),
+        content: const Text(
+          'This permanently removes the selected encrypted files from your vault.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true || !mounted) return;
+    await context.read<DocumentListProvider>().deleteDocuments(selected);
+    if (!mounted) return;
+    _clearSelection();
+  }
+
+  Future<void> _openBatchCategorySheet(List<VaultDocument> selected) async {
+    if (selected.isEmpty) return;
+    final categories = context.read<CategoryListProvider>().categories;
+    final picked = await showModalBottomSheet<(bool, int?)>(
+      context: context,
+      showDragHandle: true,
+      builder: (context) {
+        return SafeArea(
+          child: ConstrainedBox(
+            constraints: BoxConstraints(
+              maxHeight: MediaQuery.sizeOf(context).height * 0.75,
+            ),
+            child: ListView(
+              shrinkWrap: true,
+              children: [
+                const ListTile(
+                  title: Text('Set category'),
+                  subtitle: Text('Apply to selected documents'),
+                ),
+                ListTile(
+                  leading: const Icon(Icons.clear_rounded),
+                  title: const Text('No category'),
+                  onTap: () => Navigator.of(context).pop((true, null)),
+                ),
+                for (final c in categories)
+                  ListTile(
+                    leading: const Icon(Icons.label_outline_rounded),
+                    title: Text(c.name),
+                    onTap: () => Navigator.of(context).pop((true, c.id)),
+                  ),
+                const SizedBox(height: 8),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+    if (!mounted || picked == null || picked.$1 != true) return;
+    await context
+        .read<DocumentListProvider>()
+        .setCategoryForDocuments(selected, categoryId: picked.$2);
+    if (!mounted) return;
+    _clearSelection();
+  }
+
   @override
   Widget build(BuildContext context) {
     final provider = context.watch<DocumentListProvider>();
     final scheme = Theme.of(context).colorScheme;
     final textTheme = Theme.of(context).textTheme;
+    final visibleDocs = provider.documents;
+    _syncSelectionWithVisible(visibleDocs);
+    final selectedVisibleDocs = _selectedVisibleDocuments(visibleDocs);
+    final allVisibleSelected =
+        visibleDocs.isNotEmpty && selectedVisibleDocs.length == visibleDocs.length;
 
     return Scaffold(
       body: CustomScrollView(
         slivers: [
           SliverAppBar.large(
             pinned: true,
-            title: const Text('Your vault'),
+            title: _selectionMode
+                ? Text('${selectedVisibleDocs.length} selected')
+                : const Text('Your vault'),
             actions: [
-              PopupMenuButton<VaultDocumentSort>(
-                tooltip: 'Sort',
-                icon: const Icon(Icons.sort_rounded),
-                initialValue: provider.sortMode,
-                onSelected: (VaultDocumentSort mode) {
-                  context.read<DocumentListProvider>().setSortMode(mode);
-                },
-                itemBuilder: (context) => [
-                  for (final s in VaultDocumentSort.values)
-                    PopupMenuItem<VaultDocumentSort>(
-                      value: s,
-                      child: Row(
-                        children: [
-                          SizedBox(
-                            width: 28,
-                            child: s == provider.sortMode
-                                ? Icon(
-                                    Icons.check_rounded,
-                                    size: 20,
-                                    color: scheme.primary,
-                                  )
-                                : null,
-                          ),
-                          Text(s.menuLabel),
-                        ],
-                      ),
-                    ),
-                ],
-              ),
-              IconButton(
-                tooltip: 'Filters',
-                onPressed: () => showDocumentFiltersSheet(context),
-                icon: Badge(
-                  isLabelVisible: provider.hasStructuredFilters,
-                  padding: const EdgeInsets.symmetric(horizontal: 5),
-                  backgroundColor: scheme.primary,
-                  child: const Icon(Icons.tune_rounded),
+              if (_selectionMode) ...[
+                IconButton(
+                  tooltip: allVisibleSelected ? 'Clear selection' : 'Select all',
+                  icon: Icon(
+                    allVisibleSelected
+                        ? Icons.deselect_rounded
+                        : Icons.select_all_rounded,
+                  ),
+                  onPressed: () {
+                    if (allVisibleSelected) {
+                      _clearSelection();
+                    } else {
+                      _selectAllVisible(visibleDocs);
+                    }
+                  },
                 ),
-              ),
-              IconButton(
-                icon: const Icon(Icons.settings_outlined),
-                tooltip: 'Settings',
-                onPressed: () {
-                  Navigator.of(context).push(
-                    MaterialPageRoute<void>(
-                      builder: (_) => MultiProvider(
-                        providers: [
-                          Provider.value(
-                            value: context.read<SecureStorageService>(),
-                          ),
-                          Provider.value(
-                            value: context.read<ExpiryReminderService>(),
-                          ),
-                          ChangeNotifierProvider.value(
-                            value: context.read<AuthStateProvider>(),
-                          ),
-                          ChangeNotifierProvider.value(
-                            value: context.read<CategoryListProvider>(),
-                          ),
-                          ChangeNotifierProvider.value(
-                            value: context.read<ThemeController>(),
-                          ),
-                        ],
-                        child: const SettingsScreen(),
+                IconButton(
+                  tooltip: 'Set category',
+                  icon: const Icon(Icons.label_outline_rounded),
+                  onPressed: selectedVisibleDocs.isEmpty
+                      ? null
+                      : () => _openBatchCategorySheet(selectedVisibleDocs),
+                ),
+                IconButton(
+                  tooltip: 'Delete selected',
+                  icon: Icon(
+                    Icons.delete_outline_rounded,
+                    color: scheme.error.withValues(alpha: 0.9),
+                  ),
+                  onPressed: selectedVisibleDocs.isEmpty
+                      ? null
+                      : () => _confirmBatchDelete(selectedVisibleDocs),
+                ),
+                IconButton(
+                  tooltip: 'Close selection',
+                  icon: const Icon(Icons.close_rounded),
+                  onPressed: _clearSelection,
+                ),
+              ] else ...[
+                PopupMenuButton<VaultDocumentSort>(
+                  tooltip: 'Sort',
+                  icon: const Icon(Icons.sort_rounded),
+                  initialValue: provider.sortMode,
+                  onSelected: (VaultDocumentSort mode) {
+                    context.read<DocumentListProvider>().setSortMode(mode);
+                  },
+                  itemBuilder: (context) => [
+                    for (final s in VaultDocumentSort.values)
+                      PopupMenuItem<VaultDocumentSort>(
+                        value: s,
+                        child: Row(
+                          children: [
+                            SizedBox(
+                              width: 28,
+                              child: s == provider.sortMode
+                                  ? Icon(
+                                      Icons.check_rounded,
+                                      size: 20,
+                                      color: scheme.primary,
+                                    )
+                                  : null,
+                            ),
+                            Text(s.menuLabel),
+                          ],
+                        ),
                       ),
-                    ),
-                  );
-                },
-              ),
-              IconButton(
-                icon: const Icon(Icons.lock_person_outlined),
-                tooltip: 'Lock vault',
-                onPressed: () => context.read<AuthStateProvider>().lock(),
-              ),
+                  ],
+                ),
+                IconButton(
+                  tooltip: 'Filters',
+                  onPressed: () => showDocumentFiltersSheet(context),
+                  icon: Badge(
+                    isLabelVisible: provider.hasStructuredFilters,
+                    padding: const EdgeInsets.symmetric(horizontal: 5),
+                    backgroundColor: scheme.primary,
+                    child: const Icon(Icons.tune_rounded),
+                  ),
+                ),
+                IconButton(
+                  icon: const Icon(Icons.settings_outlined),
+                  tooltip: 'Settings',
+                  onPressed: () {
+                    Navigator.of(context).push(
+                      MaterialPageRoute<void>(
+                        builder: (_) => MultiProvider(
+                          providers: [
+                            Provider.value(
+                              value: context.read<SecureStorageService>(),
+                            ),
+                            Provider.value(
+                              value: context.read<ExpiryReminderService>(),
+                            ),
+                            ChangeNotifierProvider.value(
+                              value: context.read<AuthStateProvider>(),
+                            ),
+                            ChangeNotifierProvider.value(
+                              value: context.read<CategoryListProvider>(),
+                            ),
+                            ChangeNotifierProvider.value(
+                              value: context.read<ThemeController>(),
+                            ),
+                          ],
+                          child: const SettingsScreen(),
+                        ),
+                      ),
+                    );
+                  },
+                ),
+                IconButton(
+                  icon: const Icon(Icons.lock_person_outlined),
+                  tooltip: 'Lock vault',
+                  onPressed: () => context.read<AuthStateProvider>().lock(),
+                ),
+              ],
             ],
           ),
           SliverPadding(
@@ -164,7 +326,7 @@ class _DocumentsHomeScreenState extends State<DocumentsHomeScreen> {
               ),
             ),
           ),
-          if (provider.hasActiveListFilters)
+          if (!_selectionMode && provider.hasActiveListFilters)
             SliverToBoxAdapter(
               child: Padding(
                 padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
@@ -255,14 +417,19 @@ class _DocumentsHomeScreenState extends State<DocumentsHomeScreen> {
             SliverPadding(
               padding: const EdgeInsets.fromLTRB(20, 8, 20, 120),
               sliver: SliverList.separated(
-                itemCount: provider.documents.length,
+                itemCount: visibleDocs.length,
                 separatorBuilder: (context, index) =>
                     const SizedBox(height: 10),
                 itemBuilder: (context, index) {
-                  final doc = provider.documents[index];
+                  final doc = visibleDocs[index];
+                  final isSelected = _selectedIds.contains(doc.id);
                   return VaultDocumentListCard(
                     document: doc,
                     onOpen: () {
+                      if (_selectionMode) {
+                        _toggleSelection(doc.id);
+                        return;
+                      }
                       Navigator.of(context).push(
                         MaterialPageRoute<void>(
                           builder: (_) =>
@@ -274,19 +441,41 @@ class _DocumentsHomeScreenState extends State<DocumentsHomeScreen> {
                         ),
                       );
                     },
-                    onEdit: () => _pushEditScreen(context, doc),
-                    onDelete: () => provider.deleteDocument(doc),
+                    onEdit: () {
+                      if (_selectionMode) {
+                        _toggleSelection(doc.id);
+                        return;
+                      }
+                      _pushEditScreen(context, doc);
+                    },
+                    onDelete: () {
+                      if (_selectionMode) {
+                        _toggleSelection(doc.id);
+                        return;
+                      }
+                      provider.deleteDocument(doc);
+                    },
+                    selectionMode: _selectionMode,
+                    selected: isSelected,
+                    onToggleSelected: () => _toggleSelection(doc.id),
+                    onLongPress: () {
+                      if (!_selectionMode) {
+                        _toggleSelection(doc.id);
+                      }
+                    },
                   );
                 },
               ),
             ),
         ],
       ),
-      floatingActionButton: FloatingActionButton.extended(
+      floatingActionButton: _selectionMode
+          ? null
+          : FloatingActionButton.extended(
         onPressed: () {
           Navigator.of(context).push(
             MaterialPageRoute<void>(
-              builder: (routeContext) => MultiProvider(
+              builder: (_) => MultiProvider(
                 providers: [
                   ChangeNotifierProvider.value(
                     value: context.read<DocumentListProvider>(),

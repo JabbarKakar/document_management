@@ -188,6 +188,41 @@ class DocumentListProvider extends ChangeNotifier {
     await _runFilteredQuery();
   }
 
+  /// Batch action (Module 12): set category for currently selected documents.
+  Future<void> setCategoryForDocuments(
+    List<VaultDocument> documents, {
+    required int? categoryId,
+  }) async {
+    if (documents.isEmpty) return;
+    _isLoading = true;
+    notifyListeners();
+
+    for (final doc in documents) {
+      await _repository.updateDocumentMetadata(
+        id: doc.id,
+        title: doc.title,
+        categoryId: categoryId,
+        expiryDate: doc.expiryDate,
+        notes: doc.notes,
+      );
+    }
+    await _runFilteredQuery();
+  }
+
+  /// Batch action (Module 12): delete many documents in one refresh cycle.
+  Future<void> deleteDocuments(List<VaultDocument> documents) async {
+    if (documents.isEmpty) return;
+    _isLoading = true;
+    notifyListeners();
+
+    for (final doc in documents) {
+      await _expiryReminders.cancelForDocument(doc.id);
+      await _expiryReminders.deleteNotificationPreviewForDocument(doc.id);
+      await _repository.deleteDocument(doc);
+    }
+    await _runFilteredQuery();
+  }
+
   Future<void> deleteDocument(VaultDocument document) async {
     _isLoading = true;
     notifyListeners();

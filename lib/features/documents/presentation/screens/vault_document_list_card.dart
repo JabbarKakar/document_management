@@ -214,12 +214,20 @@ class VaultDocumentListCard extends StatelessWidget {
     required this.onOpen,
     required this.onEdit,
     required this.onDelete,
+    this.selectionMode = false,
+    this.selected = false,
+    this.onToggleSelected,
+    this.onLongPress,
   });
 
   final VaultDocument document;
   final VoidCallback onOpen;
   final VoidCallback onEdit;
   final VoidCallback onDelete;
+  final bool selectionMode;
+  final bool selected;
+  final VoidCallback? onToggleSelected;
+  final VoidCallback? onLongPress;
 
   static String _formatExpiry(DateTime d) {
     final local = d.toLocal();
@@ -243,6 +251,7 @@ class VaultDocumentListCard extends StatelessWidget {
       clipBehavior: Clip.antiAlias,
       child: ListTile(
         onTap: onOpen,
+        onLongPress: onLongPress,
         contentPadding: const EdgeInsets.symmetric(
           horizontal: 12,
           vertical: 8,
@@ -293,27 +302,32 @@ class VaultDocumentListCard extends StatelessWidget {
           ],
         ),
         isThreeLine: expiry != null,
-        trailing: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            IconButton(
-              icon: Icon(
-                Icons.edit_outlined,
-                color: scheme.primary.withValues(alpha: 0.9),
+        trailing: selectionMode
+            ? Checkbox(
+                value: selected,
+                onChanged: (_) => onToggleSelected?.call(),
+              )
+            : Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  IconButton(
+                    icon: Icon(
+                      Icons.edit_outlined,
+                      color: scheme.primary.withValues(alpha: 0.9),
+                    ),
+                    tooltip: 'Edit',
+                    onPressed: onEdit,
+                  ),
+                  IconButton(
+                    icon: Icon(
+                      Icons.delete_outline_rounded,
+                      color: scheme.error.withValues(alpha: 0.85),
+                    ),
+                    tooltip: 'Delete',
+                    onPressed: onDelete,
+                  ),
+                ],
               ),
-              tooltip: 'Edit',
-              onPressed: onEdit,
-            ),
-            IconButton(
-              icon: Icon(
-                Icons.delete_outline_rounded,
-                color: scheme.error.withValues(alpha: 0.85),
-              ),
-              tooltip: 'Delete',
-              onPressed: onDelete,
-            ),
-          ],
-        ),
       ),
     );
   }
