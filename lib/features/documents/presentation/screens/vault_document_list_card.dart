@@ -334,36 +334,62 @@ class VaultDocumentListCard extends StatelessWidget {
                 value: selected,
                 onChanged: (_) => onToggleSelected?.call(),
               )
-            : Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  IconButton(
-                    icon: Icon(
-                      Icons.info_outline_rounded,
-                      color: scheme.onSurfaceVariant.withValues(alpha: 0.92),
+            : PopupMenuButton<_CardAction>(
+                tooltip: 'Actions',
+                icon: Icon(
+                  Icons.more_vert_rounded,
+                  color: scheme.onSurfaceVariant.withValues(alpha: 0.92),
+                ),
+                onSelected: (action) {
+                  switch (action) {
+                    case _CardAction.details:
+                      onDetails?.call();
+                    case _CardAction.edit:
+                      onEdit();
+                    case _CardAction.delete:
+                      onDelete();
+                  }
+                },
+                itemBuilder: (context) => [
+                  const PopupMenuItem<_CardAction>(
+                    value: _CardAction.details,
+                    child: ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      leading: Icon(Icons.info_outline_rounded),
+                      title: Text('Details'),
                     ),
-                    tooltip: 'Details',
-                    onPressed: onDetails,
                   ),
-                  IconButton(
-                    icon: Icon(
-                      Icons.edit_outlined,
-                      color: scheme.primary.withValues(alpha: 0.9),
+                  const PopupMenuItem<_CardAction>(
+                    value: _CardAction.edit,
+                    child: ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      leading: Icon(Icons.edit_outlined),
+                      title: Text('Edit'),
                     ),
-                    tooltip: 'Edit',
-                    onPressed: onEdit,
                   ),
-                  IconButton(
-                    icon: Icon(
-                      Icons.delete_outline_rounded,
-                      color: scheme.error.withValues(alpha: 0.85),
+                  PopupMenuItem<_CardAction>(
+                    value: _CardAction.delete,
+                    child: ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      leading: Icon(
+                        Icons.delete_outline_rounded,
+                        color: scheme.error.withValues(alpha: 0.95),
+                      ),
+                      title: Text(
+                        'Delete',
+                        style: TextStyle(color: scheme.error),
+                      ),
                     ),
-                    tooltip: 'Delete',
-                    onPressed: onDelete,
                   ),
                 ],
               ),
       ),
     );
   }
+}
+
+enum _CardAction {
+  details,
+  edit,
+  delete,
 }
