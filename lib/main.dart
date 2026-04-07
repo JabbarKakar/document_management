@@ -15,6 +15,7 @@ import 'core/services/document_export_service.dart';
 import 'core/services/expiry_reminder_service.dart';
 import 'core/services/document_thumbnail_cache_service.dart';
 import 'core/services/secure_storage_service.dart';
+import 'core/widgets/vault_activity_detector.dart';
 import 'features/auth/presentation/providers/auth_state_provider.dart';
 import 'features/auth/presentation/screens/create_pin_screen.dart';
 import 'features/auth/presentation/screens/lock_screen.dart';
@@ -234,9 +235,11 @@ class _AuthGateState extends State<_AuthGate> {
     if (auth.isLocked) {
       return const LockScreen();
     }
-    return _ExpiryBootstrap(
-      service: context.read<ExpiryReminderService>(),
-      child: const DocumentsHomeScreen(),
+    return VaultActivityDetector(
+      child: _ExpiryBootstrap(
+        service: context.read<ExpiryReminderService>(),
+        child: const DocumentsHomeScreen(),
+      ),
     );
   }
 }

@@ -1,4 +1,3 @@
-import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
 
 import '../../../../core/auth/auth_manager.dart';
@@ -180,11 +179,27 @@ class AuthStateProvider extends ChangeNotifier
     _lastActivityAt = DateTime.now();
   }
 
+  /// Public guard for sensitive actions (Module 21).
+  /// If timeout has elapsed, this will lock the vault.
+  Future<void> enforceAutoLockIfNeeded() async {
+    if (_needsPinSetup || _isLocked) return;
+    await _checkAutoLock();
+  }
+
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state != AppLifecycleState.resumed) return;
-    if (_needsPinSetup || _isLocked) return;
-    _checkAutoLock();
+    if (_needsPinSetup) return;
+    if (state == AppLifecycleState.paused ||
+        state == AppLifecycleState.inactive ||
+        state == AppLifecycleState.detached) {
+      // Record last seen time for background-based auto-lock.
+      recordActivity();
+      return;
+    }
+    if (state == AppLifecycleState.resumed) {
+      if (_isLocked) return;
+      _checkAutoLock();
+    }
   }
 
   Future<void> _checkAutoLock() async {

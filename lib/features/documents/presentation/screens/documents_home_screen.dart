@@ -48,7 +48,29 @@ class _DocumentsHomeScreenState extends State<DocumentsHomeScreen> {
     super.dispose();
   }
 
-  void _pushEditScreen(BuildContext context, VaultDocument doc) {
+  Future<bool> _ensureUnlocked({String? reason}) async {
+    final auth = context.read<AuthStateProvider>();
+    await auth.enforceAutoLockIfNeeded();
+    if (!mounted) return false;
+    if (auth.isLocked) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            reason == null
+                ? 'Vault locked. Enter your PIN to continue.'
+                : 'Vault locked. Enter your PIN to $reason.',
+          ),
+          duration: const Duration(seconds: 2),
+        ),
+      );
+      return false;
+    }
+    return true;
+  }
+
+  Future<void> _pushEditScreen(VaultDocument doc) async {
+    if (!await _ensureUnlocked(reason: 'edit')) return;
+    if (!mounted) return;
     Navigator.of(context).push(
       MaterialPageRoute<void>(
         builder: (_) => MultiProvider(
@@ -66,7 +88,9 @@ class _DocumentsHomeScreenState extends State<DocumentsHomeScreen> {
     );
   }
 
-  void _openViewer(VaultDocument doc) {
+  Future<void> _openViewer(VaultDocument doc) async {
+    if (!await _ensureUnlocked(reason: 'open')) return;
+    if (!mounted) return;
     Navigator.of(context).push(
       MaterialPageRoute<void>(
         builder: (_) => Provider<EncryptedFileStorageService>.value(
@@ -102,6 +126,7 @@ class _DocumentsHomeScreenState extends State<DocumentsHomeScreen> {
 
   Future<void> _exportDocuments(List<VaultDocument> docs) async {
     if (docs.isEmpty || _isExporting) return;
+    if (!await _ensureUnlocked(reason: 'export')) return;
     if (!await _confirmExportCount(docs.length)) return;
     if (!mounted) return;
 
@@ -191,6 +216,7 @@ class _DocumentsHomeScreenState extends State<DocumentsHomeScreen> {
 
   Future<void> _startBulkImport() async {
     if (_isImporting) return;
+    if (!await _ensureUnlocked(reason: 'import')) return;
     final files = await _picker.pickMultipleForImport();
     if (files.isEmpty || !mounted) return;
 
@@ -312,12 +338,14 @@ class _DocumentsHomeScreenState extends State<DocumentsHomeScreen> {
     );
   }
 
-  void _openDetailsSheet(VaultDocument doc) {
+  Future<void> _openDetailsSheet(VaultDocument doc) async {
+    if (!await _ensureUnlocked(reason: 'view details')) return;
+    if (!mounted) return;
     showDocumentDetailsSheet(
       context,
       document: doc,
       onOpen: () => _openViewer(doc),
-      onEdit: () => _pushEditScreen(context, doc),
+      onEdit: () => _pushEditScreen(doc),
       onDelete: () => context.read<DocumentListProvider>().deleteDocument(doc),
       onExport: () => _exportDocuments([doc]),
     );
@@ -713,7 +741,7 @@ class _DocumentsHomeScreenState extends State<DocumentsHomeScreen> {
                         _toggleSelection(doc.id);
                         return;
                       }
-                      _pushEditScreen(context, doc);
+                      _pushEditScreen(doc);
                     },
                     onDelete: () {
                       if (_selectionMode) {
