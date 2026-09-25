@@ -5,10 +5,7 @@ import '../entities/vault_document.dart';
 abstract class DocumentRepository {
   Future<List<VaultDocument>> getAllDocuments();
 
-  Future<List<VaultDocument>> searchDocuments({
-    String? query,
-    int? categoryId,
-  });
+  Future<List<VaultDocument>> searchDocuments({String? query, int? categoryId});
 
   Future<VaultDocument> addDocument({
     required String title,
@@ -36,5 +33,18 @@ abstract class DocumentRepository {
   });
 
   Future<void> deleteDocument(VaultDocument document);
+  Future<List<VaultDocument>> getTrash();
+  Future<VaultDocument> restoreDocument(int id);
+  Future<void> permanentlyDeleteDocument(int id);
+  Future<VaultDocument> restoreVersion(int id, String path);
+  Future<VaultDocument> updateOrganization(
+    int id, {
+    bool? favorite,
+    List<String>? tags,
+    List<int>? reminderOffsets,
+    bool? remindersDisabled,
+    String? extractedText,
+    String? expectedFilePath,
+  });
+  Future<void> recordActivity(int id, String action);
 }
-

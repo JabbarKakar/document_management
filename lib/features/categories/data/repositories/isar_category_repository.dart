@@ -1,4 +1,5 @@
 import 'package:isar/isar.dart';
+import '../../../../core/services/document_metadata_codec.dart';
 
 import '../../../documents/data/models/vault_document_model.dart';
 import '../../../documents/domain/entities/vault_document.dart';
@@ -7,9 +8,10 @@ import '../../domain/repositories/category_repository.dart';
 import '../models/vault_category_model.dart';
 
 class IsarCategoryRepository implements CategoryRepository {
-  IsarCategoryRepository(this._isar);
+  IsarCategoryRepository(this._isar, this._codec);
 
   final Isar _isar;
+  final DocumentMetadataCodec _codec;
 
   IsarCollection<VaultCategoryModel> get _categories =>
       _isar.collection<VaultCategoryModel>();
@@ -108,7 +110,8 @@ class IsarCategoryRepository implements CategoryRepository {
         .categoryIdEqualTo(categoryId)
         .sortByCreatedAtDesc()
         .findAll();
-    return models.map((m) => m.toEntity()).toList();
+    final decoded = await Future.wait(models.where((m) => m.deletedAt == null).map(_codec.decode));
+    return decoded.map((m) => m.toEntity()).toList();
   }
 }
 

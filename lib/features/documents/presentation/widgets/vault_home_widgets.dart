@@ -61,7 +61,7 @@ class _VaultSearchFieldState extends State<VaultSearchField> {
             style: textTheme.bodyMedium,
             textInputAction: TextInputAction.search,
             decoration: InputDecoration(
-              hintText: 'Search title or notes',
+              hintText: 'Search titles, notes or tags',
               filled: true,
               fillColor: AppColors.glassFill(scheme.brightness),
               prefixIcon: Icon(
@@ -455,7 +455,7 @@ class VaultSelectionBar extends StatelessWidget {
                             icon: const Icon(Icons.ios_share_rounded, size: 22),
                           ),
                           IconButton(
-                            tooltip: 'Delete selected',
+                            tooltip: 'Move selected to Trash',
                             onPressed: actionsEnabled ? onDelete : null,
                             icon: Icon(
                               Icons.delete_outline_rounded,

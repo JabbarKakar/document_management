@@ -96,7 +96,10 @@ class _DocumentFiltersSheetBodyState extends State<_DocumentFiltersSheetBody> {
               const SizedBox(height: 20),
               DropdownButtonFormField<int?>(
                 key: ValueKey(docs.categoryFilter),
-                initialValue: _validCategoryValue(docs.categoryFilter, categories),
+                initialValue: _validCategoryValue(
+                  docs.categoryFilter,
+                  categories,
+                ),
                 isExpanded: true,
                 decoration: _fieldDecoration(context, 'Category'),
                 items: [
@@ -148,6 +151,25 @@ class _DocumentFiltersSheetBodyState extends State<_DocumentFiltersSheetBody> {
                 },
               ),
               const SizedBox(height: 28),
+              DropdownButtonFormField<String?>(
+                key: ValueKey(docs.tagFilter),
+                initialValue: docs.tagFilter,
+                isExpanded: true,
+                decoration: _fieldDecoration(context, 'Tag'),
+                items: [
+                  const DropdownMenuItem<String?>(
+                    value: null,
+                    child: Text('All tags'),
+                  ),
+                  for (final tag in {
+                    ...docs.availableTags,
+                    if (docs.tagFilter != null) docs.tagFilter!,
+                  })
+                    DropdownMenuItem<String?>(value: tag, child: Text(tag)),
+                ],
+                onChanged: docs.setTagFilter,
+              ),
+              const SizedBox(height: 16),
               FilledButton(
                 onPressed: () => Navigator.of(context).pop(),
                 child: const Text('Done'),

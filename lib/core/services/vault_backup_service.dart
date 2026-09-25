@@ -7,8 +7,10 @@ import 'package:path/path.dart' as p;
 import '../../features/categories/data/models/vault_category_model.dart';
 import '../../features/documents/data/models/vault_document_model.dart';
 import '../../features/documents/domain/entities/vault_document.dart';
+import '../../features/documents/domain/document_history.dart';
 import '../encryption/password_crypto.dart';
 import 'encrypted_file_storage_service.dart';
+import 'document_metadata_codec.dart';
 
 Uint8List _sealBackup((Uint8List, String) input) =>
     PasswordCrypto.seal(input.$1, input.$2);
@@ -52,35 +54,56 @@ class VaultBackupService {
         );
       }
       var size = 0;
-      final records = <Map<String, Object?>>[];
-      for (final doc in documents) {
-        if (await storage.storedLength(doc.filePath) > maxContentBytes - size + 40) {
-          throw const FormatException('This backup supports up to 32 MB of document content.');
+      Future<Map<String, Object?>> content(String path) async {
+        if (await storage.storedLength(path) > maxContentBytes - size + 64) {
+          throw const FormatException(
+            'Backup content, including versions, exceeds 32 MB.',
+          );
         }
-        // Any missing/unreadable file fails the backup rather than silently
-        // claiming that an incomplete archive can recover the entire vault.
-        final bytes = await storage.readDecryptedBytes(doc.filePath);
+        final bytes = await storage.readDecryptedBytes(path);
         size += bytes.length;
         if (size > maxContentBytes) {
           throw const FormatException(
-            'This backup supports up to 32 MB of document content.',
+            'Backup content, including versions, exceeds 32 MB.',
           );
         }
+        return {'extension': p.extension(path), 'bytes': base64Encode(bytes)};
+      }
+
+      final records = <Map<String, Object?>>[];
+      for (final stored in documents) {
+        final doc = await DocumentMetadataCodec(storage).decode(stored);
+        final versions = <Map<String, Object?>>[];
+        for (final version in doc.versionRecords.map(DocumentVersion.decode)) {
+          versions.add({
+            ...await content(version.path),
+            'fileType': VaultDocumentFileType.values[version.typeIndex].name,
+            'createdAt': version.createdAt.toIso8601String(),
+          });
+        }
         records.add({
+          ...await content(doc.filePath),
           'title': doc.title,
           'createdAt': doc.createdAt.toIso8601String(),
           'expiryDate': doc.expiryDate?.toIso8601String(),
           'notes': doc.notes,
           'categoryId': doc.categoryId,
           'fileType': doc.fileType.name,
-          'extension': p.extension(doc.filePath),
-          'bytes': base64Encode(bytes),
+          'updatedAt': doc.updatedAt?.toIso8601String(),
+          'deletedAt': doc.deletedAt?.toIso8601String(),
+          'isFavorite': doc.isFavorite,
+          'tags': doc.tags,
+          'reminderOffsets': doc.reminderOffsets,
+          'remindersDisabled': doc.remindersDisabled,
+          'extractedText': doc.extractedText,
+          'activity': doc.activityRecords,
+          'versions': versions,
         });
       }
       final plain = Uint8List.fromList(
         utf8.encode(
           jsonEncode({
-            'version': 1,
+            'version': 2,
             'categories': categories
                 .map(
                   (c) => {
@@ -133,6 +156,21 @@ class VaultBackupService {
           fileName: 'restored${doc.extension}',
         );
         stagedPaths.add(path);
+        final versions = <String>[];
+        for (final version in doc.versions) {
+          final versionPath = await storage.saveBytes(
+            bytes: version.bytes,
+            fileName: 'restored${version.extension}',
+          );
+          stagedPaths.add(versionPath);
+          versions.add(
+            DocumentVersion(
+              path: versionPath,
+              typeIndex: version.fileType.index,
+              createdAt: version.createdAt,
+            ).encode(),
+          );
+        }
         models.add(
           VaultDocumentModel()
             ..title = doc.title
@@ -141,7 +179,17 @@ class VaultBackupService {
             ..fileType = doc.fileType
             ..expiryDate = doc.expiryDate
             ..notes = doc.notes
-            ..categoryId = doc.categoryId,
+            ..categoryId = doc.categoryId
+            ..updatedAt = doc.updatedAt
+            // Recovery grants trashed content a fresh recovery window.
+            ..deletedAt = doc.deletedAt == null ? null : DateTime.now()
+            ..isFavorite = doc.isFavorite
+            ..tags = doc.tags
+            ..versionRecords = versions
+            ..activityRecords = doc.activity
+            ..extractedText = doc.extractedText
+            ..reminderOffsets = doc.reminderOffsets
+            ..remindersDisabled = doc.remindersDisabled,
         );
       }
       await isar.writeTxn(() async {
@@ -160,20 +208,22 @@ class VaultBackupService {
         for (final category in manifest.categories) {
           var id = byName[category.name.toLowerCase()];
           if (id != null && !reusedIds.add(id)) id = null;
-          if (id == null) {
-            id = await categoryCollection.put(
-              VaultCategoryModel()
-                ..name = category.name
-                ..isDefault = category.isDefault
-                ..sortOrder = category.sortOrder,
-            );
-          }
+          id ??= await categoryCollection.put(
+            VaultCategoryModel()
+              ..name = category.name
+              ..isDefault = category.isDefault
+              ..sortOrder = category.sortOrder,
+          );
           mapping[category.id] = id;
         }
         for (final model in models) {
           model.categoryId = mapping[model.categoryId];
         }
-        await documentCollection.putAll(models);
+        final encoded = <VaultDocumentModel>[];
+        for (final model in models) {
+          encoded.add(await DocumentMetadataCodec(storage).encode(model));
+        }
+        await documentCollection.putAll(encoded);
       });
       committed = true;
       return models.length;
@@ -201,8 +251,17 @@ class BackupDocument {
     this.categoryId,
     this.fileType,
     this.extension,
-    this.bytes,
-  );
+    this.bytes, {
+    this.updatedAt,
+    this.deletedAt,
+    this.isFavorite = false,
+    this.tags = const [],
+    this.reminderOffsets = const [],
+    this.remindersDisabled = false,
+    this.extractedText,
+    this.activity = const [],
+    this.versions = const [],
+  });
   final String title;
   final DateTime createdAt;
   final DateTime? expiryDate;
@@ -211,6 +270,12 @@ class BackupDocument {
   final VaultDocumentFileType fileType;
   final String extension;
   final Uint8List bytes;
+  final DateTime? updatedAt, deletedAt;
+  final bool isFavorite, remindersDisabled;
+  final List<String> tags, activity;
+  final List<int> reminderOffsets;
+  final String? extractedText;
+  final List<BackupDocument> versions;
 }
 
 class BackupCategory {
@@ -233,7 +298,9 @@ class BackupManifest {
         throw const FormatException();
       }
       final data = jsonDecode(utf8.decode(plain)) as Map<String, dynamic>;
-      if (data['version'] != 1) throw const FormatException();
+      if (data['version'] != 1 && data['version'] != 2) {
+        throw const FormatException();
+      }
       final categoryData = data['categories'] as List;
       final documentData = data['documents'] as List;
       if (categoryData.length > 1000 ||
@@ -253,7 +320,7 @@ class BackupManifest {
         );
       }).toList();
       var total = 0;
-      final documents = documentData.map((raw) {
+      BackupDocument parseDocument(dynamic raw, {bool version = false}) {
         final d = raw as Map<String, dynamic>;
         final bytes = base64Decode(d['bytes'] as String);
         total += bytes.length;
@@ -268,8 +335,27 @@ class BackupManifest {
         if (category != null && !categoryIds.contains(category)) {
           throw const FormatException();
         }
+        final tags = (d['tags'] as List? ?? [])
+            .map((v) => _text(v, 40))
+            .toList();
+        final offsets = (d['reminderOffsets'] as List? ?? []).cast<int>();
+        final activity = (d['activity'] as List? ?? []).map((v) {
+          final encoded = _text(v, 4096);
+          final event = DocumentActivity.decode(encoded);
+          _text(event.action, 1024);
+          return encoded;
+        }).toList();
+        final versions = d['versions'] as List? ?? [];
+        if (tags.length > 20 ||
+            offsets.length > 5 ||
+            offsets.any((d) => d < 0 || d > 365) ||
+            activity.length > 200 ||
+            versions.length > VaultRetention.previousVersions ||
+            (version && versions.isNotEmpty)) {
+          throw const FormatException();
+        }
         return BackupDocument(
-          _text(d['title'], 4096),
+          version ? 'Previous version' : _text(d['title'], 4096),
           DateTime.parse(d['createdAt'] as String),
           d['expiryDate'] == null
               ? null
@@ -281,8 +367,27 @@ class BackupManifest {
           VaultDocumentFileType.values.byName(d['fileType'] as String),
           extension,
           bytes,
+          updatedAt: d['updatedAt'] == null
+              ? null
+              : DateTime.parse(d['updatedAt'] as String),
+          deletedAt: d['deletedAt'] == null
+              ? null
+              : DateTime.parse(d['deletedAt'] as String),
+          isFavorite: d['isFavorite'] as bool? ?? false,
+          tags: tags,
+          reminderOffsets: offsets,
+          remindersDisabled: d['remindersDisabled'] as bool? ?? false,
+          extractedText: d['extractedText'] == null
+              ? null
+              : _text(d['extractedText'], 1024 * 1024, allowEmpty: true),
+          activity: activity,
+          versions: versions
+              .map((v) => parseDocument(v, version: true))
+              .toList(),
         );
-      }).toList();
+      }
+
+      final documents = documentData.map((d) => parseDocument(d)).toList();
       return BackupManifest(documents, categories);
     } catch (_) {
       throw const FormatException(

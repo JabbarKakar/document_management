@@ -10,6 +10,8 @@ import '../../../auth/presentation/screens/change_pin_screen.dart';
 import '../../../categories/presentation/providers/category_list_provider.dart';
 import '../../../categories/presentation/screens/category_management_screen.dart';
 import 'recovery_backup_screen.dart';
+import 'vault_maintenance_screen.dart';
+import '../../../documents/presentation/screens/trash_screen.dart';
 
 /// Module 9 – vault settings: reminders, categories, security, about.
 class SettingsScreen extends StatefulWidget {
@@ -67,8 +69,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
       await expiry.syncAll();
     } catch (_) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-          content: Text('Preference saved. Check notification permissions and retry reminders.')));
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Preference saved. Check notification permissions and retry reminders.',
+            ),
+          ),
+        );
       }
     }
   }
@@ -184,6 +191,20 @@ class _SettingsScreenState extends State<SettingsScreen> {
             },
           ),
           const _SectionHeader('Organization'),
+          ListTile(leading: const Icon(Icons.health_and_safety_outlined),
+            title: const Text('Vault health'), subtitle: const Text('Verify files and upgrade older encryption'),
+            onTap: () => Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => const VaultMaintenanceScreen()))),
+          ListTile(
+            leading: const Icon(Icons.delete_outline_rounded),
+            title: const Text('Trash'),
+            subtitle: const Text(
+              'Restore documents deleted in the last 30 days',
+            ),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () => Navigator.of(context).push(
+              MaterialPageRoute<void>(builder: (_) => const TrashScreen()),
+            ),
+          ),
           ListTile(
             leading: const Icon(Icons.category_outlined),
             title: const Text('Categories'),

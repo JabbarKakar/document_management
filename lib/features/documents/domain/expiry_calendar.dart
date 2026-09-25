@@ -1,9 +1,9 @@
 /// Local calendar-day helpers for document expiry (Module 8 / 11 / list card styling).
-int calendarDaysUntilExpiry(DateTime expiry) {
-  final now = DateTime.now();
-  final today = DateTime(now.year, now.month, now.day);
+int calendarDaysUntilExpiry(DateTime expiry, {DateTime? now}) {
+  now ??= DateTime.now();
+  final today = DateTime.utc(now.year, now.month, now.day);
   final exp = expiry.toLocal();
-  final expiryDay = DateTime(exp.year, exp.month, exp.day);
+  final expiryDay = DateTime.utc(exp.year, exp.month, exp.day);
   return expiryDay.difference(today).inDays;
 }
 

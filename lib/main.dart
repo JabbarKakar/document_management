@@ -16,6 +16,8 @@ import 'core/services/expiry_reminder_service.dart';
 import 'core/services/document_thumbnail_cache_service.dart';
 import 'core/services/secure_storage_service.dart';
 import 'core/services/vault_backup_service.dart';
+import 'core/services/document_metadata_codec.dart';
+import 'core/services/vault_maintenance_service.dart';
 import 'core/widgets/vault_session_gate.dart';
 import 'features/auth/presentation/providers/auth_state_provider.dart';
 import 'features/documents/data/repositories/isar_document_repository.dart';
@@ -119,15 +121,19 @@ class _AppInitGateState extends State<_AppInitGate> {
         );
 
         final expiryReminders = ExpiryReminderService(
+          metadataCodec: DocumentMetadataCodec(fileStorage),
           isar: isar,
           plugin: initializer.notificationInitializer.plugin,
           secureStorage: initializer.secureStorage,
         );
-        final documentExport = DocumentExportService();
+        final documentRepository = IsarDocumentRepository(isar: isar, fileStorageService: fileStorage);
+        final documentExport = DocumentExportService(onPrepared: (id) =>
+          documentRepository.recordActivity(id, 'Prepared a decrypted copy for sharing'));
 
         // One service graph owns the protected nested navigator and its drafts.
         return _readyTree = MultiProvider(
           providers: [
+            Provider<VaultMaintenanceService>.value(value: VaultMaintenanceService(isar, fileStorage)),
             Provider<VaultBackupService>.value(
               value: VaultBackupService(isar: isar, storage: fileStorage),
             ),
@@ -144,10 +150,7 @@ class _AppInitGateState extends State<_AppInitGate> {
             ChangeNotifierProvider<DocumentListProvider>(
               create: (_) {
                 final list = DocumentListProvider(
-                  IsarDocumentRepository(
-                    isar: isar,
-                    fileStorageService: fileStorage,
-                  ),
+                  documentRepository,
                   expiryReminders,
                   initializer.secureStorage,
                   thumbnailCache,
@@ -158,7 +161,7 @@ class _AppInitGateState extends State<_AppInitGate> {
             ),
             ChangeNotifierProvider<CategoryListProvider>(
               create: (_) =>
-                  CategoryListProvider(IsarCategoryRepository(isar))
+                  CategoryListProvider(IsarCategoryRepository(isar, DocumentMetadataCodec(fileStorage)))
                     ..loadAndEnsureDefaults(),
             ),
             ChangeNotifierProvider<AuthStateProvider>(

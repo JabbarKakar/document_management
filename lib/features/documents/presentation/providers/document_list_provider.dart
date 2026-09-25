@@ -7,6 +7,8 @@ import '../../../../core/services/document_thumbnail_cache_service.dart';
 import '../../data/services/document_file_picker.dart';
 import '../../domain/document_sorting.dart';
 import '../../domain/entities/vault_document.dart';
+import '../../domain/document_history.dart';
+import '../../domain/expiry_calendar.dart';
 import '../../domain/repositories/document_repository.dart';
 import '../../domain/vault_document_filters.dart';
 import '../../domain/vault_document_sort.dart';
@@ -29,6 +31,21 @@ class DocumentListProvider extends ChangeNotifier {
   int _queryGeneration = 0;
   String? get errorMessage => _errorMessage;
   List<VaultDocument> _documents = [];
+  List<VaultDocument> _allDocuments = [];
+  bool _cacheLoaded = false;
+  String _smartView = 'all';
+  String? _tagFilter;
+  String get smartView => _smartView;
+  String? get tagFilter => _tagFilter;
+  List<String> get availableTags =>
+      _allDocuments.expand((d) => d.tags).toSet().toList()..sort();
+  VaultDocument? documentById(int id) {
+    for (final document in _allDocuments) {
+      if (document.id == id) return document;
+    }
+    return null;
+  }
+
   String _currentQuery = '';
   int? _currentCategoryFilter;
   VaultDocumentSort _sortMode = VaultDocumentSort.newestFirst;
@@ -51,12 +68,20 @@ class DocumentListProvider extends ChangeNotifier {
   bool get hasStructuredFilters =>
       _currentCategoryFilter != null ||
       _fileTypeFilter != VaultFileTypeFilter.all ||
-      _expiryFilter != VaultExpiryFilter.any;
+      _expiryFilter != VaultExpiryFilter.any ||
+      _smartView != 'all' ||
+      _tagFilter != null;
 
   /// Call once after construction (see [main.dart] provider `create`).
   Future<void> startup() async {
     final stored = await _secureStorage.readDocumentListSort();
     _sortMode = VaultDocumentSort.fromStorage(stored);
+    try {
+      await purgeExpiredTrash();
+    } catch (_) {
+      _errorMessage =
+          'Trash cleanup could not finish. You can retry from Trash.';
+    }
     await loadDocuments();
   }
 
@@ -76,30 +101,32 @@ class DocumentListProvider extends ChangeNotifier {
 
   Future<void> setSearchQuery(String query) async {
     _currentQuery = query;
-    await _runFilteredQuery();
+    await _runFilteredQuery(refresh: false);
   }
 
   Future<void> setCategoryFilter(int? categoryId) async {
     _currentCategoryFilter = categoryId;
-    await _runFilteredQuery();
+    await _runFilteredQuery(refresh: false);
   }
 
   Future<void> setFileTypeFilter(VaultFileTypeFilter filter) async {
     if (filter == _fileTypeFilter) return;
     _fileTypeFilter = filter;
-    await _runFilteredQuery();
+    await _runFilteredQuery(refresh: false);
   }
 
   Future<void> setExpiryFilter(VaultExpiryFilter filter) async {
     if (filter == _expiryFilter) return;
     _expiryFilter = filter;
-    await _runFilteredQuery();
+    await _runFilteredQuery(refresh: false);
   }
 
   void _resetStructuredFilterFields() {
     _currentCategoryFilter = null;
     _fileTypeFilter = VaultFileTypeFilter.all;
     _expiryFilter = VaultExpiryFilter.any;
+    _smartView = 'all';
+    _tagFilter = null;
   }
 
   /// Resets category, file type, and expiry. Leaves the search query as-is.
@@ -115,20 +142,43 @@ class DocumentListProvider extends ChangeNotifier {
     await _runFilteredQuery();
   }
 
-  Future<void> _runFilteredQuery() async {
+  Future<void> _runFilteredQuery({bool refresh = true}) async {
     final generation = ++_queryGeneration;
     _isLoading = true;
     notifyListeners();
     try {
-      final List<VaultDocument> baseList;
-      if (_currentQuery.isEmpty && _currentCategoryFilter == null) {
-        baseList = await _repository.getAllDocuments();
-      } else {
-        baseList = await _repository.searchDocuments(
-          query: _currentQuery,
-          categoryId: _currentCategoryFilter,
-        );
+      if (refresh || !_cacheLoaded) {
+        final loaded = await _repository.getAllDocuments();
+        if (generation != _queryGeneration) return;
+        _allDocuments = loaded;
+        _cacheLoaded = true;
       }
+      final query = _currentQuery.trim().toLowerCase();
+      final baseList = _allDocuments.where((d) {
+        if (_currentCategoryFilter != null &&
+            d.categoryId != _currentCategoryFilter) {
+          return false;
+        }
+        if (_tagFilter != null && !d.tags.contains(_tagFilter)) return false;
+        if (_smartView == 'favorites' && !d.isFavorite) return false;
+        if (_smartView == 'uncategorized' && d.categoryId != null) return false;
+        if (_smartView == 'recent' &&
+            DateTime.now().difference(d.createdAt).inDays >= 7) {
+          return false;
+        }
+        if (_smartView == 'expiring' &&
+            (d.expiryDate == null ||
+                calendarDaysUntilExpiry(d.expiryDate!) > 30)) {
+          return false;
+        }
+        return query.isEmpty ||
+            [
+              d.title,
+              d.notes ?? '',
+              d.tags.join(' '),
+              d.extractedText ?? '',
+            ].any((text) => text.toLowerCase().contains(query));
+      }).toList();
       if (generation != _queryGeneration) return;
       _documents = applyAdvancedFilters(
         baseList,
@@ -150,6 +200,71 @@ class DocumentListProvider extends ChangeNotifier {
       }
     }
   }
+
+  Future<void> setSmartView(String value) async {
+    _smartView = value;
+    await _runFilteredQuery(refresh: false);
+  }
+
+  Future<void> setTagFilter(String? value) async {
+    _tagFilter = value;
+    await _runFilteredQuery(refresh: false);
+  }
+
+  Future<List<VaultDocument>> getTrash() => _repository.getTrash();
+
+  Future<void> purgeExpiredTrash() async {
+    final now = DateTime.now();
+    for (final document in await _repository.getTrash()) {
+      if (VaultRetention.shouldPurge(document.deletedAt!, now)) {
+        await _repository.permanentlyDeleteDocument(document.id);
+      }
+    }
+  }
+
+  Future<void> restoreDocument(int id) async {
+    final document = await _repository.restoreDocument(id);
+    await _rescheduleSafely(document);
+    await _runFilteredQuery();
+  }
+
+  Future<void> purgeDocument(int id) async {
+    await _repository.permanentlyDeleteDocument(id);
+    _thumbnailCache.removeByDocument(id);
+    await _runFilteredQuery();
+  }
+
+  Future<void> restoreVersion(int id, String path) async {
+    final document = await _repository.restoreVersion(id, path);
+    _thumbnailCache.removeByDocument(id);
+    await _rescheduleSafely(document);
+    await _runFilteredQuery();
+  }
+
+  Future<void> updateOrganization(
+    int id, {
+    bool? favorite,
+    List<String>? tags,
+    List<int>? reminderOffsets,
+    bool? remindersDisabled,
+    String? extractedText,
+    String? expectedFilePath,
+  }) async {
+    final document = await _repository.updateOrganization(
+      id,
+      favorite: favorite,
+      tags: tags,
+      reminderOffsets: reminderOffsets,
+      remindersDisabled: remindersDisabled,
+      extractedText: extractedText,
+      expectedFilePath: expectedFilePath,
+    );
+    await _rescheduleSafely(document);
+    await _runFilteredQuery();
+  }
+
+  Future<void> recordExport(int id) async =>
+      _repository.recordActivity(id, 'Exported a decrypted copy');
 
   Future<void> addDocumentFromPicker({
     required String title,
@@ -182,6 +297,7 @@ class DocumentListProvider extends ChangeNotifier {
   Future<BulkImportReport> importDocumentsFromPickerFiles({
     required List<PickedDocumentFile> files,
     int? categoryId,
+    bool Function()? isCancelled,
     void Function({
       required int completed,
       required int total,
@@ -199,8 +315,13 @@ class DocumentListProvider extends ChangeNotifier {
       var completed = 0;
       var succeeded = 0;
       final failed = <String>[];
+      final retryFiles = <PickedDocumentFile>[];
 
       for (final f in files) {
+        if (isCancelled?.call() == true) {
+          retryFiles.addAll(files.skip(completed));
+          break;
+        }
         try {
           final added = await _repository.addDocument(
             title: _defaultTitleFromFileName(f.fileName),
@@ -215,6 +336,7 @@ class DocumentListProvider extends ChangeNotifier {
           succeeded++;
         } catch (_) {
           failed.add(f.fileName);
+          retryFiles.add(f);
         } finally {
           completed++;
           onProgress?.call(
@@ -230,6 +352,7 @@ class DocumentListProvider extends ChangeNotifier {
         total: files.length,
         succeeded: succeeded,
         failedNames: failed,
+        retryFiles: retryFiles,
       );
     } finally {
       _isLoading = false;
@@ -374,9 +497,11 @@ class BulkImportReport {
     required this.total,
     required this.succeeded,
     required this.failedNames,
+    this.retryFiles = const [],
   });
 
   final int total;
   final int succeeded;
   final List<String> failedNames;
+  final List<PickedDocumentFile> retryFiles;
 }

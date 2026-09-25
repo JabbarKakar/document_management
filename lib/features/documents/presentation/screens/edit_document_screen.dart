@@ -31,6 +31,16 @@ class _EditDocumentScreenState extends State<EditDocumentScreen> {
 
   bool get _isEditing => widget.existing != null;
 
+  Future<void> _pickFile(Future<PickedDocumentFile?> Function() pick) async {
+    try {
+      final result = await pick();
+      if (mounted && result != null) setState(() => _pickedFile = result);
+    } catch (error) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(
+        error is FormatException ? error.message : 'Could not open this file. Check access and try again.')));
+    }
+  }
+
   @override
   void initState() {
     super.initState();
@@ -267,12 +277,7 @@ class _EditDocumentScreenState extends State<EditDocumentScreen> {
                         children: [
                           Expanded(
                             child: OutlinedButton.icon(
-                              onPressed: () async {
-                                final result = await _picker.pickFromGallery();
-                                if (result != null) {
-                                  setState(() => _pickedFile = result);
-                                }
-                              },
+                              onPressed: () => _pickFile(_picker.pickFromGallery),
                               icon: const Icon(Icons.photo_library_outlined),
                               label: const Text('Replace from gallery'),
                             ),
@@ -280,13 +285,7 @@ class _EditDocumentScreenState extends State<EditDocumentScreen> {
                           const SizedBox(width: 10),
                           Expanded(
                             child: OutlinedButton.icon(
-                              onPressed: () async {
-                                final result = await _picker
-                                    .captureFromCamera();
-                                if (result != null) {
-                                  setState(() => _pickedFile = result);
-                                }
-                              },
+                              onPressed: () => _pickFile(_picker.captureFromCamera),
                               icon: const Icon(Icons.photo_camera_outlined),
                               label: const Text('Replace by camera'),
                             ),
@@ -311,12 +310,7 @@ class _EditDocumentScreenState extends State<EditDocumentScreen> {
                       ),
                       const SizedBox(height: 10),
                       OutlinedButton.icon(
-                        onPressed: () async {
-                          final result = await _picker.pickPdf();
-                          if (result != null) {
-                            setState(() => _pickedFile = result);
-                          }
-                        },
+                        onPressed: () => _pickFile(_picker.pickPdf),
                         icon: const Icon(Icons.picture_as_pdf_outlined),
                         label: const Text('Replace with PDF'),
                       ),
@@ -374,12 +368,7 @@ class _EditDocumentScreenState extends State<EditDocumentScreen> {
                         children: [
                           Expanded(
                             child: OutlinedButton.icon(
-                              onPressed: () async {
-                                final result = await _picker.pickFromGallery();
-                                if (result != null) {
-                                  setState(() => _pickedFile = result);
-                                }
-                              },
+                              onPressed: () => _pickFile(_picker.pickFromGallery),
                               icon: const Icon(Icons.photo_library_outlined),
                               label: const Text('Gallery'),
                             ),
@@ -387,13 +376,7 @@ class _EditDocumentScreenState extends State<EditDocumentScreen> {
                           const SizedBox(width: 10),
                           Expanded(
                             child: OutlinedButton.icon(
-                              onPressed: () async {
-                                final result = await _picker
-                                    .captureFromCamera();
-                                if (result != null) {
-                                  setState(() => _pickedFile = result);
-                                }
-                              },
+                              onPressed: () => _pickFile(_picker.captureFromCamera),
                               icon: const Icon(Icons.photo_camera_outlined),
                               label: const Text('Camera'),
                             ),
@@ -418,12 +401,7 @@ class _EditDocumentScreenState extends State<EditDocumentScreen> {
                       ),
                       const SizedBox(height: 10),
                       OutlinedButton.icon(
-                        onPressed: () async {
-                          final result = await _picker.pickPdf();
-                          if (result != null) {
-                            setState(() => _pickedFile = result);
-                          }
-                        },
+                        onPressed: () => _pickFile(_picker.pickPdf),
                         icon: const Icon(Icons.picture_as_pdf_outlined),
                         label: const Text('Import PDF'),
                       ),
@@ -536,3 +514,4 @@ class _EditDocumentScreenState extends State<EditDocumentScreen> {
     );
   }
 }
+

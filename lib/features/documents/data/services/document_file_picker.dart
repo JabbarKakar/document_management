@@ -1,10 +1,12 @@
 import 'dart:typed_data';
+import 'dart:io';
 import 'package:path/path.dart' as p;
 
 import 'package:file_picker/file_picker.dart';
 import 'package:image_picker/image_picker.dart';
 
 import '../../domain/entities/vault_document.dart';
+import 'document_import_validation.dart';
 
 class PickedDocumentFile {
   PickedDocumentFile({
@@ -32,6 +34,7 @@ class DocumentFilePicker {
     final picked = await _imagePicker.pickImage(source: ImageSource.gallery);
     if (picked == null) return null;
 
+    _checkSize(await picked.length());
     final bytes = await picked.readAsBytes();
     return PickedDocumentFile(
       bytes: bytes,
@@ -44,6 +47,7 @@ class DocumentFilePicker {
     final picked = await _imagePicker.pickImage(source: ImageSource.camera);
     if (picked == null) return null;
 
+    _checkSize(await picked.length());
     final bytes = await picked.readAsBytes();
     return PickedDocumentFile(
       bytes: bytes,
@@ -56,13 +60,13 @@ class DocumentFilePicker {
     final result = await _filePicker.pickFiles(
       type: FileType.custom,
       allowedExtensions: ['pdf'],
-      withData: true,
+      withData: false,
     );
     final file = result?.files.single;
-    if (file == null || file.bytes == null) return null;
+    if (file == null) return null;
 
     return PickedDocumentFile(
-      bytes: file.bytes!,
+      bytes: await _readBounded(file),
       fileName: file.name,
       fileType: VaultDocumentFileType.pdf,
     );
@@ -72,7 +76,7 @@ class DocumentFilePicker {
     final result = await _filePicker.pickFiles(
       type: FileType.custom,
       allowMultiple: true,
-      withData: true,
+      withData: false,
       allowedExtensions: const [
         'pdf',
         'jpg',
@@ -86,10 +90,16 @@ class DocumentFilePicker {
     );
 
     final files = result?.files ?? const [];
+    if (files.length > DocumentImportLimits.batchFiles ||
+        files.fold<int>(0, (total, file) => total + file.size) > DocumentImportLimits.batchBytes) {
+      throw const FormatException('Import up to 50 files and 64 MB per batch.');
+    }
     final out = <PickedDocumentFile>[];
+    var totalBytes = 0;
     for (final f in files) {
-      final bytes = f.bytes;
-      if (bytes == null || bytes.isEmpty) continue;
+      final bytes = await _readBounded(f);
+      totalBytes += bytes.length;
+      if (totalBytes > DocumentImportLimits.batchBytes) throw const FormatException('Import up to 64 MB per batch.');
       final type = _detectTypeFromName(f.name);
       out.add(
         PickedDocumentFile(
@@ -100,6 +110,30 @@ class DocumentFilePicker {
       );
     }
     return out;
+  }
+
+  static void _checkSize(int size) {
+    if (size <= 0 || size > DocumentImportLimits.fileBytes) {
+      throw const FormatException('Choose a nonempty file no larger than 20 MB.');
+    }
+  }
+
+  static Future<Uint8List> _readBounded(PlatformFile file) async {
+    _checkSize(file.size);
+    if (file.bytes != null) {
+      _checkSize(file.bytes!.length);
+      return file.bytes!;
+    }
+    if (file.path == null) throw const FormatException('The document provider did not supply a readable file.');
+    final bytes = BytesBuilder(copy: false);
+    await for (final chunk in File(file.path!).openRead()) {
+      if (bytes.length + chunk.length > DocumentImportLimits.fileBytes) {
+        throw const FormatException('This file exceeds 20 MB.');
+      }
+      bytes.add(chunk);
+    }
+    _checkSize(bytes.length);
+    return bytes.takeBytes();
   }
 
   static VaultDocumentFileType _detectTypeFromName(String name) {

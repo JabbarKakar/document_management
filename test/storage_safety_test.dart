@@ -50,4 +50,15 @@ void main() {
     expect(await load, isNull);
     expect(cache.entryCount, 0);
   });
+  test('replaced documents cannot repopulate their old pending thumbnail', () async {
+    final cache = DocumentThumbnailCacheService();
+    final pending = Completer<Uint8List?>();
+    final old = cache.getOrLoad(key: '1|document', loader: () => pending.future);
+    cache.removeByDocument(1);
+    final replacement = Uint8List.fromList([9]);
+    await cache.getOrLoad(key: '1|document', loader: () async => replacement);
+    pending.complete(Uint8List.fromList([1]));
+    expect(await old, isNull);
+    expect(cache.get('1|document'), replacement);
+  });
 }

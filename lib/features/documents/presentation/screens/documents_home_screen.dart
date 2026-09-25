@@ -231,10 +231,17 @@ class _DocumentsHomeScreenState extends State<DocumentsHomeScreen> {
     return picked.$2;
   }
 
-  Future<void> _startBulkImport() async {
+  Future<void> _startBulkImport({List<PickedDocumentFile>? retryFiles}) async {
     if (_isImporting) return;
     if (!await _ensureUnlocked(reason: 'import')) return;
-    final files = await _picker.pickMultipleForImport();
+    final List<PickedDocumentFile> files;
+    try {
+      files = retryFiles ?? await _picker.pickMultipleForImport();
+    } catch (error) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(
+        error is FormatException ? error.message : 'Could not read these files. Please retry.')));
+      return;
+    }
     if (files.isEmpty || !mounted) return;
 
     final categoryId = await _pickImportCategory(
@@ -272,6 +279,7 @@ class _DocumentsHomeScreenState extends State<DocumentsHomeScreen> {
       'Starting...',
     ));
     setState(() => _isImporting = true);
+    var cancelled = false;
     showDialog<void>(
       useRootNavigator: false,
       context: context,
@@ -280,6 +288,7 @@ class _DocumentsHomeScreenState extends State<DocumentsHomeScreen> {
         canPop: false,
         child: AlertDialog(
           title: const Text('Importing files'),
+          actions: [TextButton(onPressed: () { cancelled = true; }, child: const Text('Stop after current file'))],
           content: ValueListenableBuilder<(int, int, String)>(
             valueListenable: progress,
             builder: (_, p, child) {
@@ -312,6 +321,7 @@ class _DocumentsHomeScreenState extends State<DocumentsHomeScreen> {
           .importDocumentsFromPickerFiles(
             files: files,
             categoryId: categoryId,
+            isCancelled: () => cancelled,
             onProgress:
                 ({
                   required int completed,
@@ -340,18 +350,19 @@ class _DocumentsHomeScreenState extends State<DocumentsHomeScreen> {
     }
     final r = report;
 
-    await showDialog<void>(
+    final retry = await showDialog<bool>(
       useRootNavigator: false,
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Import finished'),
+        title: Text(cancelled ? 'Import stopped' : 'Import finished'),
         content: Text(
-          r.failedNames.isEmpty
+          r.retryFiles.isEmpty
               ? 'Imported ${r.succeeded} of ${r.total} files successfully.'
               : 'Imported ${r.succeeded} of ${r.total} files.\n'
-                    '${r.failedNames.length} failed.',
+                    '${r.failedNames.length} failed, ${r.total - r.succeeded - r.failedNames.length} not processed.\n${r.failedNames.take(5).join('\n')}',
         ),
         actions: [
+          if (r.retryFiles.isNotEmpty) TextButton(onPressed: () => Navigator.of(context).pop(true), child: const Text('Retry remaining')),
           FilledButton(
             onPressed: () => Navigator.of(context).pop(),
             child: const Text('OK'),
@@ -359,6 +370,7 @@ class _DocumentsHomeScreenState extends State<DocumentsHomeScreen> {
         ],
       ),
     );
+    if (retry == true && mounted) await _startBulkImport(retryFiles: r.retryFiles);
   }
 
   Future<void> _openDetailsSheet(VaultDocument doc) async {
@@ -429,9 +441,9 @@ class _DocumentsHomeScreenState extends State<DocumentsHomeScreen> {
       useRootNavigator: false,
       context: context,
       builder: (context) => AlertDialog(
-        title: Text('Delete $count documents?'),
+        title: Text('Move $count document(s) to Trash?'),
         content: const Text(
-          'This permanently removes the selected encrypted files from your vault.',
+          'Restore them from Settings → Trash for 30 days. Previous versions stay with each document until permanent deletion.',
         ),
         actions: [
           TextButton(
@@ -444,7 +456,7 @@ class _DocumentsHomeScreenState extends State<DocumentsHomeScreen> {
               foregroundColor: Theme.of(context).colorScheme.onError,
             ),
             onPressed: () => Navigator.of(context).pop(true),
-            child: const Text('Delete'),
+            child: const Text('Move to Trash'),
           ),
         ],
       ),
@@ -724,6 +736,33 @@ class _DocumentsHomeScreenState extends State<DocumentsHomeScreen> {
                                     ? null
                                     : _startBulkImport,
                               ),
+                            ],
+                          ),
+                        ),
+                      ),
+                      SliverToBoxAdapter(
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 20,
+                            vertical: 8,
+                          ),
+                          child: Wrap(
+                            spacing: 8,
+                            runSpacing: 8,
+                            children: [
+                              for (final entry in const {
+                                'all': 'All',
+                                'favorites': 'Favorites',
+                                'uncategorized': 'Uncategorized',
+                                'expiring': 'Expiry attention',
+                                'recent': 'Recent',
+                              }.entries)
+                                ChoiceChip(
+                                  label: Text(entry.value),
+                                  selected: provider.smartView == entry.key,
+                                  onSelected: (_) =>
+                                      provider.setSmartView(entry.key),
+                                ),
                             ],
                           ),
                         ),

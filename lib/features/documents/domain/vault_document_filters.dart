@@ -9,11 +9,11 @@ enum VaultFileTypeFilter {
   other;
 
   String get chipLabel => switch (this) {
-        all => 'All',
-        image => 'Images',
-        pdf => 'PDFs',
-        other => 'Other',
-      };
+    all => 'All',
+    image => 'Images',
+    pdf => 'PDFs',
+    other => 'Other',
+  };
 }
 
 /// Mutually exclusive expiry facet. [any] means no expiry-based filtering.
@@ -26,13 +26,13 @@ enum VaultExpiryFilter {
   expiringWithin30;
 
   String get chipLabel => switch (this) {
-        any => 'Any expiry',
-        hasExpiry => 'Has expiry date',
-        noExpiry => 'No expiry date',
-        expired => 'Expired',
-        expiringWithin7 => 'Within 7 days',
-        expiringWithin30 => 'Within 30 days',
-      };
+    any => 'Any expiry',
+    hasExpiry => 'Has expiry date',
+    noExpiry => 'No expiry date',
+    expired => 'Expired',
+    expiringWithin7 => 'Within 7 days',
+    expiringWithin30 => 'Within 30 days',
+  };
 }
 
 bool _isPdfLike(VaultDocument d) {
@@ -60,11 +60,11 @@ bool _matchesExpiry(VaultDocument d, VaultExpiryFilter filter) {
     VaultExpiryFilter.expiringWithin7 =>
       d.expiryDate != null &&
           _notExpired(d.expiryDate!) &&
-          calendarDaysUntilExpiry(d.expiryDate!) < 7,
+          calendarDaysUntilExpiry(d.expiryDate!) <= 7,
     VaultExpiryFilter.expiringWithin30 =>
       d.expiryDate != null &&
           _notExpired(d.expiryDate!) &&
-          calendarDaysUntilExpiry(d.expiryDate!) < 30,
+          calendarDaysUntilExpiry(d.expiryDate!) <= 30,
   };
 }
 

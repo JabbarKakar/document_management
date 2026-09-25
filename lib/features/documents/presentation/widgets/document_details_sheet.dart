@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 
 import '../../../categories/presentation/providers/category_list_provider.dart';
 import '../../domain/entities/vault_document.dart';
+import '../screens/document_management_screen.dart';
 
 Future<void> showDocumentDetailsSheet(
   BuildContext context, {
@@ -134,6 +135,21 @@ class _DocumentDetailsSheet extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 20),
+            OutlinedButton.icon(
+              onPressed: () {
+                final navigator = Navigator.of(context);
+                navigator.pop();
+                navigator.push(
+                  MaterialPageRoute<void>(
+                    builder: (_) =>
+                        DocumentManagementScreen(document: document),
+                  ),
+                );
+              },
+              icon: const Icon(Icons.history_rounded),
+              label: const Text('Tags, reminders & history'),
+            ),
+            const SizedBox(height: 12),
             Wrap(
               spacing: 8,
               runSpacing: 8,
@@ -168,10 +184,8 @@ class _DocumentDetailsSheet extends StatelessWidget {
                     onDelete();
                   },
                   icon: const Icon(Icons.delete_outline_rounded),
-                  style: FilledButton.styleFrom(
-                    foregroundColor: scheme.error,
-                  ),
-                  label: const Text('Delete'),
+                  style: FilledButton.styleFrom(foregroundColor: scheme.error),
+                  label: const Text('Move to Trash'),
                 ),
               ],
             ),

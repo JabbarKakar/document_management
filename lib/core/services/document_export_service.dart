@@ -11,6 +11,8 @@ import 'encrypted_file_storage_service.dart';
 
 /// Module 18: exports decrypted copies through the platform share sheet.
 class DocumentExportService {
+  DocumentExportService({this.onPrepared});
+  final Future<void> Function(int)? onPrepared;
   Future<ShareResult> exportDocumentsViaShare({
     required List<VaultDocument> documents,
     required EncryptedFileStorageService storage,
@@ -34,6 +36,10 @@ class DocumentExportService {
       files.add(XFile(outFile.path));
     }
 
+    storage.requireUnlocked?.call();
+    for (final document in documents) {
+      await onPrepared?.call(document.id);
+    }
     storage.requireUnlocked?.call();
     final result = await SharePlus.instance.share(ShareParams(
       files: files, text: message, sharePositionOrigin: sharePositionOrigin));

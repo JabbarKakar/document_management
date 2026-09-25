@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 
 import 'app_tokens.dart';
 
@@ -73,9 +72,7 @@ abstract final class AppTheme {
       shadow: const Color(0xFF000000),
     );
 
-    final baseText = GoogleFonts.interTextTheme(
-      isDark ? ThemeData.dark().textTheme : ThemeData.light().textTheme,
-    );
+    final baseText = (isDark ? ThemeData.dark().textTheme : ThemeData.light().textTheme).apply(fontFamily: 'Inter');
 
     TextStyle inter({
       required double size,
@@ -84,7 +81,9 @@ abstract final class AppTheme {
       double height = 1.35,
       Color? color,
     }) {
-      return GoogleFonts.inter(
+      return TextStyle(
+        fontFamily: 'Inter',
+        fontVariations: [FontVariation('wght', weight.value.toDouble())],
         fontSize: size,
         fontWeight: weight,
         letterSpacing: letterSpacing,

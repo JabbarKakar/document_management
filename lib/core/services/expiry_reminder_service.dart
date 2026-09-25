@@ -11,6 +11,7 @@ import 'package:timezone/timezone.dart' as tz;
 import '../../features/documents/data/models/vault_document_model.dart';
 import '../../features/documents/domain/entities/vault_document.dart';
 import 'secure_storage_service.dart';
+import 'document_metadata_codec.dart';
 
 /// Schedules local notifications at 30, 15, and 7 days before document expiry
 /// (09:00 local), with fallbacks when those offsets are already in the past.
@@ -19,6 +20,7 @@ class ExpiryReminderService {
     required Isar isar,
     required FlutterLocalNotificationsPlugin plugin,
     required SecureStorageService secureStorage,
+    this.metadataCodec,
   }) : _isar = isar,
        _plugin = plugin,
        _secureStorage = secureStorage;
@@ -26,6 +28,7 @@ class ExpiryReminderService {
   final Isar _isar;
   final FlutterLocalNotificationsPlugin _plugin;
   final SecureStorageService _secureStorage;
+  final DocumentMetadataCodec? metadataCodec;
 
   static const String _channelId = 'document_expiry_v2';
   static const List<int> _daysBefore = [30, 15, 7];
@@ -46,12 +49,12 @@ class ExpiryReminderService {
     _timeZonesInitialized = true;
   }
 
-  /// Stable notification ids per document: three slots (30 / 15 / 7 day offsets).
+  /// Stable notification ids per document: up to five configured offsets.
   static int notificationId(int documentId, int index) =>
       documentId * 10 + index;
 
   Future<void> cancelForDocument(int documentId) async {
-    for (var i = 0; i < _daysBefore.length; i++) {
+    for (var i = 0; i < 5; i++) {
       await _plugin.cancel(id: notificationId(documentId, i));
     }
   }
@@ -76,7 +79,11 @@ class ExpiryReminderService {
     await cancelForDocument(document.id);
     await deleteNotificationPreviewForDocument(document.id);
     final expiry = document.expiryDate;
-    if (expiry == null) return;
+    if (expiry == null ||
+        document.deletedAt != null ||
+        document.remindersDisabled) {
+      return;
+    }
     final enabled = await _secureStorage.getExpiryRemindersEnabled();
     if (!enabled) return;
     await ensureLocalTimeZone();
@@ -90,9 +97,16 @@ class ExpiryReminderService {
     final notificationDetails = _notificationDetailsDefault();
 
     var scheduledAny = false;
-    for (var i = 0; i < _daysBefore.length; i++) {
-      final days = _daysBefore[i];
-      final reminderDay = expiryDate.subtract(Duration(days: days));
+    final offsets = document.reminderOffsets.isEmpty
+        ? _daysBefore
+        : document.reminderOffsets;
+    for (var i = 0; i < offsets.length; i++) {
+      final days = offsets[i];
+      final reminderDay = DateTime.utc(
+        expiryDate.year,
+        expiryDate.month,
+        expiryDate.day - days,
+      );
       final scheduled = tz.TZDateTime(
         tz.local,
         reminderDay.year,
@@ -223,7 +237,8 @@ class ExpiryReminderService {
 
     await ensureLocalTimeZone();
     for (final m in models) {
-      await rescheduleForDocument(m.toEntity());
+      final decoded = metadataCodec == null ? m : await metadataCodec!.decode(m);
+      await rescheduleForDocument(decoded.toEntity());
     }
   }
 }
