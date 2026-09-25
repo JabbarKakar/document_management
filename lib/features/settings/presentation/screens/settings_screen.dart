@@ -9,6 +9,7 @@ import '../../../auth/presentation/providers/auth_state_provider.dart';
 import '../../../auth/presentation/screens/change_pin_screen.dart';
 import '../../../categories/presentation/providers/category_list_provider.dart';
 import '../../../categories/presentation/screens/category_management_screen.dart';
+import 'recovery_backup_screen.dart';
 
 /// Module 9 – vault settings: reminders, categories, security, about.
 class SettingsScreen extends StatefulWidget {
@@ -20,6 +21,7 @@ class SettingsScreen extends StatefulWidget {
 
 class _SettingsScreenState extends State<SettingsScreen> {
   bool _expiryReminders = true;
+  bool _privateNotifications = true;
   int _lockTimeoutSeconds = 60;
   String _versionLabel = '';
 
@@ -40,6 +42,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final storage = context.read<SecureStorageService>();
     final expiry = await storage.getExpiryRemindersEnabled();
     final timeout = await storage.getLockTimeoutSeconds();
+    final private = await storage.getPrivateNotifications();
     PackageInfo? info;
     try {
       info = await PackageInfo.fromPlatform();
@@ -47,9 +50,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
     if (!mounted) return;
     setState(() {
       _expiryReminders = expiry;
+      _privateNotifications = private;
       _lockTimeoutSeconds = timeout;
-      _versionLabel =
-          info == null ? '' : '${info.version} (${info.buildNumber})';
+      _versionLabel = info == null
+          ? ''
+          : '${info.version} (${info.buildNumber})';
     });
   }
 
@@ -57,13 +62,20 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final storage = context.read<SecureStorageService>();
     final expiry = context.read<ExpiryReminderService>();
     await storage.setExpiryRemindersEnabled(value);
-    await expiry.syncAll();
     if (mounted) setState(() => _expiryReminders = value);
+    try {
+      await expiry.syncAll();
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('Preference saved. Check notification permissions and retry reminders.')));
+      }
+    }
   }
 
   Future<void> _pickLockTimeout() async {
-    final storage = context.read<SecureStorageService>();
     final picked = await showDialog<int>(
+      useRootNavigator: false,
       context: context,
       builder: (ctx) {
         final scheme = Theme.of(ctx).colorScheme;
@@ -83,7 +95,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       },
     );
     if (picked == null || !mounted) return;
-    await storage.setLockTimeoutSeconds(picked);
+    await context.read<AuthStateProvider>().setLockTimeoutSeconds(picked);
     setState(() => _lockTimeoutSeconds = picked);
   }
 
@@ -93,9 +105,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final themeCtrl = context.watch<ThemeController>();
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Settings'),
-      ),
+      appBar: AppBar(title: const Text('Settings')),
       body: ListView(
         children: [
           const _SectionHeader('Appearance'),
@@ -132,8 +142,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
             child: Text(
               '“Auto” follows your device light or dark mode.',
               style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: Theme.of(context).colorScheme.onSurfaceVariant,
-                  ),
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
             ),
           ),
           const _SectionHeader('Reminders'),
@@ -145,6 +155,33 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ),
             value: _expiryReminders,
             onChanged: _setExpiry,
+          ),
+          SwitchListTile(
+            secondary: const Icon(Icons.privacy_tip_outlined),
+            title: const Text('Private notifications'),
+            subtitle: const Text(
+              'Hide document titles. Document images are never attached.',
+            ),
+            value: _privateNotifications,
+            onChanged: (value) async {
+              final storage = context.read<SecureStorageService>();
+              final reminders = context.read<ExpiryReminderService>();
+              await storage.setPrivateNotifications(value);
+              if (mounted) setState(() => _privateNotifications = value);
+              try {
+                await reminders.syncAll();
+              } catch (_) {
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text(
+                        'Preference saved. Some reminders could not be updated. Retry from Settings.',
+                      ),
+                    ),
+                  );
+                }
+              }
+            },
           ),
           const _SectionHeader('Organization'),
           ListTile(
@@ -165,6 +202,19 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ),
           const _SectionHeader('Security'),
           ListTile(
+            leading: const Icon(Icons.backup_outlined),
+            title: const Text('Backup & recovery'),
+            subtitle: const Text(
+              'Encrypted backup for a lost or replaced device',
+            ),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () => Navigator.of(context).push(
+              MaterialPageRoute<void>(
+                builder: (_) => const RecoveryBackupScreen(),
+              ),
+            ),
+          ),
+          ListTile(
             leading: const Icon(Icons.timer_outlined),
             title: const Text('Auto-lock timeout'),
             subtitle: Text(
@@ -173,14 +223,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
             trailing: const Icon(Icons.chevron_right),
             onTap: _pickLockTimeout,
           ),
-          if (auth.biometricAvailable && auth.biometricEnrolled)
-            SwitchListTile(
-              secondary: const Icon(Icons.fingerprint),
-              title: const Text('Unlock with biometrics'),
-              subtitle: const Text('Fingerprint or Face ID'),
-              value: auth.biometricEnabled,
-              onChanged: (v) => auth.setBiometricUnlockEnabled(v),
+          ListTile(
+            leading: const Icon(Icons.phonelink_lock_rounded),
+            title: const Text('Device unlock and PIN recovery'),
+            subtitle: Text(
+              auth.deviceAuthAvailable
+                  ? 'Your device passcode, fingerprint, or Face ID can unlock the vault independently. Use Forgot PIN on the lock screen to reset it.'
+                  : 'Set up a device passcode in your device settings to enable recovery.',
             ),
+          ),
           ListTile(
             leading: const Icon(Icons.pin_outlined),
             title: const Text('Change PIN'),

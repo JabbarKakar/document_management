@@ -1,6 +1,8 @@
 # Document Vault – Module Index
 
-Structured milestones for the offline vault app. **Modules 1–9** are implemented in code (see inline comments and `module-1-app-initialization.md`). **Modules 10+** below are planned; implement them one at a time.
+Structured milestones for the personal offline Android/iOS vault. Modules **1–13, 16, 18, and 19** have implementations. Module **17** supports replacement without version history. Module **20** now has an initial portable encrypted backup/restore flow; **21** has session/PIN/device-unlock hardening but further storage hardening remains. Modules **22 and 29** are partial. Other entries remain proposals, not shipped features.
+
+See [security/recovery delivery and device QA](security-recovery-implementation.md) for exact scope and current limits. Trash (24) and version retention are not yet implemented.
 
 | Module | Title | Doc |
 |--------|--------|-----|

@@ -1,5 +1,4 @@
 import 'dart:io';
-import 'dart:typed_data';
 
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter_timezone/flutter_timezone.dart';
@@ -11,7 +10,6 @@ import 'package:timezone/timezone.dart' as tz;
 
 import '../../features/documents/data/models/vault_document_model.dart';
 import '../../features/documents/domain/entities/vault_document.dart';
-import 'encrypted_file_storage_service.dart';
 import 'secure_storage_service.dart';
 
 /// Schedules local notifications at 30, 15, and 7 days before document expiry
@@ -21,16 +19,13 @@ class ExpiryReminderService {
     required Isar isar,
     required FlutterLocalNotificationsPlugin plugin,
     required SecureStorageService secureStorage,
-    required EncryptedFileStorageService fileStorage,
-  })  : _isar = isar,
-        _plugin = plugin,
-        _secureStorage = secureStorage,
-        _fileStorage = fileStorage;
+  }) : _isar = isar,
+       _plugin = plugin,
+       _secureStorage = secureStorage;
 
   final Isar _isar;
   final FlutterLocalNotificationsPlugin _plugin;
   final SecureStorageService _secureStorage;
-  final EncryptedFileStorageService _fileStorage;
 
   static const String _channelId = 'document_expiry_v2';
   static const List<int> _daysBefore = [30, 15, 7];
@@ -52,7 +47,8 @@ class ExpiryReminderService {
   }
 
   /// Stable notification ids per document: three slots (30 / 15 / 7 day offsets).
-  static int notificationId(int documentId, int index) => documentId * 10 + index;
+  static int notificationId(int documentId, int index) =>
+      documentId * 10 + index;
 
   Future<void> cancelForDocument(int documentId) async {
     for (var i = 0; i < _daysBefore.length; i++) {
@@ -78,16 +74,20 @@ class ExpiryReminderService {
 
   Future<void> rescheduleForDocument(VaultDocument document) async {
     await cancelForDocument(document.id);
+    await deleteNotificationPreviewForDocument(document.id);
     final expiry = document.expiryDate;
     if (expiry == null) return;
     final enabled = await _secureStorage.getExpiryRemindersEnabled();
     if (!enabled) return;
     await ensureLocalTimeZone();
 
-    final title = document.title.trim().isEmpty ? 'Document' : document.title.trim();
+    final private = await _secureStorage.getPrivateNotifications();
+    final title = private || document.title.trim().isEmpty
+        ? 'A document'
+        : document.title.trim();
     final expiryDate = DateTime(expiry.year, expiry.month, expiry.day);
     final now = tz.TZDateTime.now(tz.local);
-    final notificationDetails = await _notificationDetailsFor(document);
+    final notificationDetails = _notificationDetailsDefault();
 
     var scheduledAny = false;
     for (var i = 0; i < _daysBefore.length; i++) {
@@ -135,8 +135,10 @@ class ExpiryReminderService {
     required tz.TZDateTime now,
     required NotificationDetails notificationDetails,
   }) async {
-    final title =
-        document.title.trim().isEmpty ? 'Document' : document.title.trim();
+    final private = await _secureStorage.getPrivateNotifications();
+    final title = private || document.title.trim().isEmpty
+        ? 'A document'
+        : document.title.trim();
     final morningOnExpiryDay = tz.TZDateTime(
       tz.local,
       expiryDate.year,
@@ -160,7 +162,8 @@ class ExpiryReminderService {
     }
 
     final today = DateTime(now.year, now.month, now.day);
-    final isExpiryToday = expiryDate.year == today.year &&
+    final isExpiryToday =
+        expiryDate.year == today.year &&
         expiryDate.month == today.month &&
         expiryDate.day == today.day;
 
@@ -186,8 +189,7 @@ class ExpiryReminderService {
       android: AndroidNotificationDetails(
         _channelId,
         'Document expiry reminders',
-        channelDescription:
-            'Notifications for upcoming document expiry dates.',
+        channelDescription: 'Notifications for upcoming document expiry dates.',
         importance: Importance.high,
         priority: Priority.high,
       ),
@@ -195,70 +197,17 @@ class ExpiryReminderService {
     );
   }
 
-  /// Android: [largeIcon] shows the document thumbnail. iOS: image attachment.
-  /// Only image documents get artwork; PDF/other use the default icon.
-  Future<NotificationDetails> _notificationDetailsFor(
-    VaultDocument document,
-  ) async {
-    if (document.fileType != VaultDocumentFileType.image) {
-      return _notificationDetailsDefault();
-    }
-    try {
-      final bytes = await _fileStorage.readDecryptedBytes(document.filePath);
-      final previewPath = await _writeNotificationPreviewFile(
-        document: document,
-        imageBytes: bytes,
-      );
-      if (previewPath == null) {
-        return _notificationDetailsDefault();
-      }
-      return NotificationDetails(
-        android: AndroidNotificationDetails(
-          _channelId,
-          'Document expiry reminders',
-          channelDescription:
-              'Notifications for upcoming document expiry dates.',
-          importance: Importance.high,
-          priority: Priority.high,
-          largeIcon: FilePathAndroidBitmap(previewPath),
-        ),
-        iOS: DarwinNotificationDetails(
-          attachments: [
-            DarwinNotificationAttachment(previewPath),
-          ],
-        ),
-      );
-    } catch (_) {
-      return _notificationDetailsDefault();
-    }
-  }
-
-  /// Persisted path so scheduled notifications can load the bitmap at fire time.
-  Future<String?> _writeNotificationPreviewFile({
-    required VaultDocument document,
-    required Uint8List imageBytes,
-  }) async {
-    if (imageBytes.isEmpty) return null;
-    final base = await getApplicationSupportDirectory();
-    final dir = Directory(p.join(base.path, 'notif_previews'));
-    if (!await dir.exists()) {
-      await dir.create(recursive: true);
-    }
-    var ext = p.extension(document.filePath).toLowerCase();
-    if (ext.isEmpty || ext.length > 6) {
-      ext = '.jpg';
-    }
-    if (ext == '.jpeg') {
-      ext = '.jpg';
-    }
-    final outPath = p.join(dir.path, 'doc_${document.id}$ext');
-    final file = File(outPath);
-    await file.writeAsBytes(imageBytes, flush: true);
-    return outPath;
-  }
-
   /// Cancels all expiry notifications, then reschedules from DB (call on startup).
   Future<void> syncAll() async {
+    // Remove plaintext artwork left by earlier versions, including documents
+    // whose expiry was cleared or whose reminders were disabled.
+    final base = await getApplicationSupportDirectory();
+    final previews = Directory(p.join(base.path, 'notif_previews'));
+    if (await previews.exists()) {
+      await for (final entry in previews.list(followLinks: false)) {
+        if (entry is File) await entry.delete();
+      }
+    }
     final models = await _isar
         .collection<VaultDocumentModel>()
         .filter()

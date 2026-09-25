@@ -17,6 +17,7 @@ class DocumentThumbnailCacheService {
   final LinkedHashMap<String, Uint8List> _entries = LinkedHashMap();
   final Map<String, Future<Uint8List?>> _inFlight = {};
   int _bytesUsed = 0;
+  int _generation = 0;
 
   int get bytesUsed => _bytesUsed;
   int get entryCount => _entries.length;
@@ -39,10 +40,13 @@ class DocumentThumbnailCacheService {
     final pending = _inFlight[key];
     if (pending != null) return pending;
 
+    final generation = _generation;
     final task = () async {
       try {
         final loaded = await loader();
-        if (loaded == null || loaded.isEmpty) return null;
+        if (generation != _generation || loaded == null || loaded.isEmpty) {
+          return null;
+        }
         _put(key, loaded);
         return loaded;
       } finally {
@@ -63,13 +67,16 @@ class DocumentThumbnailCacheService {
         _bytesUsed -= removed.lengthInBytes;
       }
     }
-    final pendingKeys = _inFlight.keys.where((k) => k.startsWith(prefix)).toList();
+    final pendingKeys = _inFlight.keys
+        .where((k) => k.startsWith(prefix))
+        .toList();
     for (final key in pendingKeys) {
       _inFlight.remove(key);
     }
   }
 
   void clear() {
+    _generation++;
     _entries.clear();
     _inFlight.clear();
     _bytesUsed = 0;

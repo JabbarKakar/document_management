@@ -1,213 +1,260 @@
+import 'dart:async';
+import 'dart:convert';
+import 'dart:math';
+
 import 'package:flutter/widgets.dart';
 
 import '../../../../core/auth/auth_manager.dart';
 import '../../../../core/services/secure_storage_service.dart';
 
-class AuthStateProvider extends ChangeNotifier
-    with WidgetsBindingObserver {
+class AuthStateProvider extends ChangeNotifier with WidgetsBindingObserver {
   AuthStateProvider({
     required AuthManager authManager,
     SecureStorageService? secureStorageService,
-  })  : _authManager = authManager,
-        _secureStorage = secureStorageService ?? SecureStorageService();
+    DateTime Function()? now,
+    this.onLocked,
+  }) : _authManager = authManager,
+       _secureStorage = secureStorageService ?? SecureStorageService(),
+       _now = now ?? DateTime.now;
 
   final AuthManager _authManager;
   final SecureStorageService _secureStorage;
-
+  final DateTime Function() _now;
+  final VoidCallback? onLocked;
+  Timer? _idleTimer;
+  bool _disposed = false;
+  bool _initialized = false;
+  bool _busy = false;
   bool _isLocked = true;
   bool _needsPinSetup = false;
+  bool _deviceAuthAvailable = false;
+  int _timeoutSeconds = 60;
+  int _failedAttempts = 0;
+  DateTime? _blockedUntil;
   DateTime? _lastActivityAt;
   String? _errorMessage;
-  bool _biometricAvailable = false;
-  bool _biometricEnrolled = false;
-  bool _biometricEnabled = false;
 
+  bool get initialized => _initialized;
+  bool get isBusy => _busy;
   bool get isLocked => _isLocked;
   bool get needsPinSetup => _needsPinSetup;
+  bool get deviceAuthAvailable => _deviceAuthAvailable;
   String? get errorMessage => _errorMessage;
-  bool get biometricAvailable => _biometricAvailable;
-  bool get biometricEnrolled => _biometricEnrolled;
-  bool get biometricEnabled => _biometricEnabled;
+
+  void _notify() {
+    if (!_disposed) notifyListeners();
+  }
 
   Future<void> init() async {
-    _biometricAvailable = await _authManager.canUseBiometrics();
-    _biometricEnrolled = await _authManager.hasEnrolledBiometrics();
-    _biometricEnabled = await _secureStorage.getBiometricEnabled();
-    final pinSet = await _authManager.hasPinSet();
-    _needsPinSetup = !pinSet;
-    _isLocked = true;
+    if (_busy) return;
+    _busy = true;
     _errorMessage = null;
-    notifyListeners();
-  }
-
-  void _clearError() {
-    if (_errorMessage != null) {
-      _errorMessage = null;
-      notifyListeners();
-    }
-  }
-
-  void _recordUnlock() {
-    _lastActivityAt = DateTime.now();
-    _isLocked = false;
-    _clearError();
-    notifyListeners();
-  }
-
-  Future<bool> setPin(String pin, String confirmPin) async {
-    if (pin.length < 4) {
-      _errorMessage = 'PIN must be at least 4 digits';
-      notifyListeners();
-      return false;
-    }
-    if (pin != confirmPin) {
-      _errorMessage = 'PINs do not match';
-      notifyListeners();
-      return false;
-    }
+    _notify();
     try {
-      await _authManager.setPin(pin);
-      _needsPinSetup = false;
-      _recordUnlock();
-      return true;
-    } catch (e) {
-      _errorMessage = e.toString();
-      notifyListeners();
+      _deviceAuthAvailable = await _authManager.canUseDeviceAuthentication();
+      _needsPinSetup = !await _authManager.hasPinSet();
+      _timeoutSeconds = (await _secureStorage.getLockTimeoutSeconds()).clamp(
+        30,
+        900,
+      );
+      final attempts = await _secureStorage.readPinAttempts();
+      if (attempts != null) {
+        final data = jsonDecode(attempts) as Map<String, dynamic>;
+        _failedAttempts = (data['count'] as int).clamp(0, 100);
+        _blockedUntil = DateTime.tryParse(data['until'] as String? ?? '');
+      }
+      _initialized = true;
+    } catch (_) {
+      _errorMessage = 'Could not read vault security settings. Please retry.';
+    } finally {
+      _busy = false;
+      _notify();
+    }
+  }
+
+  Future<void> _saveAttempts() => _secureStorage.writePinAttempts(
+    jsonEncode({
+      'count': _failedAttempts,
+      'until': _blockedUntil?.toIso8601String(),
+    }),
+  );
+
+  Future<void> _recordUnlock() async {
+    _failedAttempts = 0;
+    _blockedUntil = null;
+    await _saveAttempts();
+    if (_disposed) return;
+    _lastActivityAt = _now();
+    _isLocked = false;
+    _errorMessage = null;
+    _armTimer();
+  }
+
+  String? _validatePair(String pin, String confirmation) =>
+      AuthManager.validatePin(pin) ??
+      (pin != confirmation ? 'PINs do not match.' : null);
+
+  Future<bool> _perform(Future<bool> Function() action) async {
+    if (_busy || !_initialized) return false;
+    _busy = true;
+    _errorMessage = null;
+    _notify();
+    try {
+      return await action();
+    } catch (_) {
+      _errorMessage = 'Could not complete authentication. Please try again.';
+      return false;
+    } finally {
+      _busy = false;
+      _notify();
+    }
+  }
+
+  Future<bool> setPin(String pin, String confirmPin) => _perform(() async {
+    if (!_needsPinSetup) return false;
+    _errorMessage = _validatePair(pin, confirmPin);
+    if (_errorMessage != null) return false;
+    await _authManager.setPin(pin);
+    _needsPinSetup = false;
+    await _recordUnlock();
+    return true;
+  });
+
+  Future<bool> _verifyPin(String pin) async {
+    if (_blockedUntil != null && _now().isBefore(_blockedUntil!)) {
+      final seconds = _blockedUntil!.difference(_now()).inSeconds + 1;
+      _errorMessage =
+          'Too many attempts. Try again in $seconds seconds, or use device unlock.';
       return false;
     }
-  }
-
-  Future<bool> unlockWithPin(String pin) async {
-    final ok = await _authManager.verifyPin(pin);
-    if (ok) {
-      _recordUnlock();
-      return true;
+    if (await _authManager.verifyPin(pin)) return true;
+    _failedAttempts++;
+    if (_failedAttempts >= 5) {
+      final delay = min(300, 30 * (1 << min(4, _failedAttempts - 5)));
+      _blockedUntil = _now().add(Duration(seconds: delay));
     }
-    _errorMessage = 'Wrong PIN';
-    notifyListeners();
+    await _saveAttempts();
+    _errorMessage = _failedAttempts >= 5
+        ? 'Too many attempts. Wait before trying again, or use device unlock.'
+        : 'Incorrect PIN.';
     return false;
   }
 
-  Future<bool> unlockWithBiometrics() async {
-    if (!_biometricEnabled) return false;
+  Future<bool> unlockWithPin(String pin) => _perform(() async {
+    if (_needsPinSetup || !await _verifyPin(pin)) return false;
+    await _recordUnlock();
+    return true;
+  });
+
+  /// Device credentials are an independent unlock method by product policy.
+  Future<bool> unlockWithDevice() => _perform(() async {
+    if (!_deviceAuthAvailable || _needsPinSetup) return false;
     final result = await _authManager.authenticateWithBiometrics();
-    if (result == true) {
-      _recordUnlock();
-      return true;
+    if (result != true) {
+      if (result == false) _errorMessage = 'Device authentication failed.';
+      return false;
     }
-    if (result == false) {
-      _errorMessage = 'Authentication failed';
-      notifyListeners();
-    }
-    return false;
-  }
+    await _recordUnlock();
+    return true;
+  });
 
-  /// Turn on fingerprint / Face ID in the app, then try to authenticate once.
-  /// Returns true if auth succeeded (and vault unlocks).
-  Future<bool> enableBiometricAndUnlock() async {
-    await _secureStorage.setBiometricEnabled(true);
-    _biometricEnabled = true;
-    notifyListeners();
+  /// Always requires a fresh OS authentication, never just an unlocked session.
+  Future<bool> resetPinWithDevice(String pin, String confirmPin) =>
+      _perform(() async {
+        _errorMessage = _validatePair(pin, confirmPin);
+        if (_errorMessage != null) return false;
+        if (!_deviceAuthAvailable || _needsPinSetup) return false;
+        final result = await _authManager.authenticateWithBiometrics();
+        if (result != true) {
+          if (result == false) {
+            _errorMessage =
+                'Device authentication failed. Your PIN was not changed.';
+          }
+          return false;
+        }
+        await _authManager.setPin(pin);
+        await _recordUnlock();
+        return true;
+      });
 
-    final result = await _authManager.authenticateWithBiometrics();
-    if (result == true) {
-      _recordUnlock();
-      return true;
-    }
-    if (result == false) {
-      _errorMessage =
-          'Could not verify. Add a fingerprint or Face ID in device settings, then try again.';
-      notifyListeners();
-    }
-    return false;
-  }
-
-  void lock() {
-    _isLocked = true;
-    _clearError();
-    notifyListeners();
-  }
-
-  /// Returns `null` on success, or an error message string.
   Future<String?> changePin({
     required String currentPin,
     required String newPin,
     required String confirmPin,
   }) async {
-    if (newPin.length < 4) {
-      return 'New PIN must be at least 4 digits';
-    }
-    if (newPin != confirmPin) {
-      return 'New PINs do not match';
-    }
-    final ok = await _authManager.verifyPin(currentPin);
-    if (!ok) {
-      return 'Current PIN is incorrect';
-    }
-    try {
+    final ok = await _perform(() async {
+      requireUnlocked();
+      _errorMessage = _validatePair(newPin, confirmPin);
+      if (_errorMessage != null || !await _verifyPin(currentPin)) return false;
+      requireUnlocked();
       await _authManager.setPin(newPin);
-    } catch (e) {
-      return e.toString();
-    }
-    return null;
+      await _recordUnlock();
+      return true;
+    });
+    return ok
+        ? null
+        : (_errorMessage ?? 'PIN was not changed. Please try again.');
   }
 
-  /// Turn biometric unlock on or off. Turning on runs one biometric prompt.
-  Future<void> setBiometricUnlockEnabled(bool enabled) async {
-    if (enabled) {
-      if (!_biometricAvailable || !_biometricEnrolled) {
-        return;
-      }
-      final result = await _authManager.authenticateWithBiometrics();
-      if (result != true) {
-        if (result == false) {
-          _errorMessage = 'Could not verify biometrics';
-          notifyListeners();
-        }
-        return;
-      }
-      await _secureStorage.setBiometricEnabled(true);
-      _biometricEnabled = true;
-    } else {
-      await _secureStorage.setBiometricEnabled(false);
-      _biometricEnabled = false;
-    }
-    notifyListeners();
+  void lock() {
+    _idleTimer?.cancel();
+    _isLocked = true;
+    _errorMessage = null;
+    onLocked?.call();
+    _notify();
   }
+
+  void requireUnlocked() {
+    _checkAutoLock();
+    if (!_initialized || _isLocked || _needsPinSetup) {
+      throw StateError('Vault locked. Unlock to continue.');
+    }
+  }
+
+  Future<void> enforceAutoLockIfNeeded() async => _checkAutoLock();
 
   void recordActivity() {
-    _lastActivityAt = DateTime.now();
+    _checkAutoLock();
+    if (_isLocked) return;
+    _lastActivityAt = _now();
+    _armTimer();
   }
 
-  /// Public guard for sensitive actions (Module 21).
-  /// If timeout has elapsed, this will lock the vault.
-  Future<void> enforceAutoLockIfNeeded() async {
-    if (_needsPinSetup || _isLocked) return;
-    await _checkAutoLock();
+  Future<void> setLockTimeoutSeconds(int seconds) async {
+    requireUnlocked();
+    await _secureStorage.setLockTimeoutSeconds(seconds);
+    _timeoutSeconds = seconds.clamp(30, 900);
+    _checkAutoLock();
+    _armTimer();
+  }
+
+  void _checkAutoLock() {
+    if (_isLocked || _lastActivityAt == null) return;
+    if (_now().difference(_lastActivityAt!) >=
+        Duration(seconds: _timeoutSeconds)) {
+      lock();
+    }
+  }
+
+  void _armTimer() {
+    _idleTimer?.cancel();
+    if (_isLocked || _disposed || _lastActivityAt == null) return;
+    final remaining =
+        Duration(seconds: _timeoutSeconds) -
+        _now().difference(_lastActivityAt!);
+    _idleTimer = Timer(remaining.isNegative ? Duration.zero : remaining, lock);
   }
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (_needsPinSetup) return;
-    if (state == AppLifecycleState.paused ||
-        state == AppLifecycleState.inactive ||
-        state == AppLifecycleState.detached) {
-      // Record last seen time for background-based auto-lock.
-      recordActivity();
-      return;
-    }
-    if (state == AppLifecycleState.resumed) {
-      if (_isLocked) return;
-      _checkAutoLock();
-    }
+    // Do not refresh activity merely because the app backgrounds.
+    if (state == AppLifecycleState.resumed) _checkAutoLock();
   }
 
-  Future<void> _checkAutoLock() async {
-    if (_lastActivityAt == null) return;
-    final timeoutSeconds = await _secureStorage.getLockTimeoutSeconds();
-    final elapsed = DateTime.now().difference(_lastActivityAt!).inSeconds;
-    if (elapsed >= timeoutSeconds) {
-      lock();
-    }
+  @override
+  void dispose() {
+    _disposed = true;
+    _idleTimer?.cancel();
+    super.dispose();
   }
 }

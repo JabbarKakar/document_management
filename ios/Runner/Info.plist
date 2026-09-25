@@ -51,6 +51,10 @@
 	<true/>
 	<key>NSFaceIDUsageDescription</key>
 	<string>Use Face ID to unlock your document vault</string>
+	<key>NSCameraUsageDescription</key>
+	<string>Capture document photos and scan pages into your offline vault.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Select document images to store in your offline vault.</string>
 	<key>UILaunchStoryboardName</key>
 	<string>LaunchScreen</string>
 	<key>UIMainStoryboardFile</key>

@@ -1,10 +1,12 @@
 import 'dart:math';
+import 'dart:io';
 
 import 'package:isar/isar.dart';
 import 'package:path/path.dart' as p;
 
 import '../data/app_config.dart';
 import '../services/app_directory_service.dart';
+import '../services/document_export_service.dart';
 import '../../features/documents/data/models/vault_document_model.dart';
 import '../../features/categories/data/models/vault_category_model.dart';
 import '../services/auth_initializer.dart';
@@ -18,13 +20,12 @@ class AppInitializer {
     AppDirectoryService? appDirectoryService,
     AuthInitializer? authInitializer,
     NotificationInitializer? notificationInitializer,
-  })  : _secureStorageService =
-            secureStorageService ?? SecureStorageService(),
-        _appDirectoryService =
-            appDirectoryService ?? const AppDirectoryService(),
-        _authInitializer = authInitializer ?? AuthInitializer(),
-        _notificationInitializer =
-            notificationInitializer ?? NotificationInitializer();
+  }) : _secureStorageService = secureStorageService ?? SecureStorageService(),
+       _appDirectoryService =
+           appDirectoryService ?? const AppDirectoryService(),
+       _authInitializer = authInitializer ?? AuthInitializer(),
+       _notificationInitializer =
+           notificationInitializer ?? NotificationInitializer();
 
   final SecureStorageService _secureStorageService;
   final AppDirectoryService _appDirectoryService;
@@ -37,22 +38,21 @@ class AppInitializer {
 
   SecureStorageService get secureStorage => _secureStorageService;
 
-  NotificationInitializer get notificationInitializer => _notificationInitializer;
+  NotificationInitializer get notificationInitializer =>
+      _notificationInitializer;
 
   Future<AppInitResult> initialize() async {
     try {
       final appDocsDir = await _appDirectoryService.getAppDocumentsDirectory();
 
-      await _ensureEncryptionKey();
+      await _ensureEncryptionKey(appDocsDir);
+      await DocumentExportService.cleanupAbandonedExports();
 
-      _isar = await Isar.open(
-        [
-          AppConfigSchema,
-          VaultDocumentModelSchema,
-          VaultCategoryModelSchema,
-        ],
-        directory: p.normalize(appDocsDir.path),
-      );
+      _isar = await Isar.open([
+        AppConfigSchema,
+        VaultDocumentModelSchema,
+        VaultCategoryModelSchema,
+      ], directory: p.normalize(appDocsDir.path));
 
       final biometricAvailable = await _authInitializer.canCheckBiometrics();
 
@@ -78,10 +78,15 @@ class AppInitializer {
     }
   }
 
-  Future<void> _ensureEncryptionKey() async {
+  Future<void> _ensureEncryptionKey(Directory vaultDirectory) async {
     final existing = await _secureStorageService.readEncryptionKey();
     if (existing != null && existing.isNotEmpty) {
       return;
+    }
+    if (!await vaultDirectory.list().isEmpty) {
+      throw StateError(
+        'The vault encryption key is missing. Existing files have been preserved. Restore your recovery backup into a new installation; a new key cannot unlock these files.',
+      );
     }
     final random = Random.secure();
     final bytes = List<int>.generate(32, (_) => random.nextInt(256));
@@ -89,4 +94,3 @@ class AppInitializer {
     await _secureStorageService.writeEncryptionKey(key);
   }
 }
-

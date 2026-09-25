@@ -86,8 +86,9 @@ class _EditDocumentScreenState extends State<EditDocumentScreen> {
 
   Future<void> _pickExpiryDate() async {
     final now = DateTime.now();
-    final firstDate = _isEditing ? DateTime(now.year - 120) : now;
+    final firstDate = DateTime(now.year - 120);
     final picked = await showDatePicker(
+      useRootNavigator: false,
       context: context,
       initialDate: _expiryDate ?? now,
       firstDate: firstDate,
@@ -109,16 +110,26 @@ class _EditDocumentScreenState extends State<EditDocumentScreen> {
       setState(() => _isSaving = true);
       try {
         await context.read<DocumentListProvider>().saveExistingDocumentChanges(
-              existing: existing,
-              title: title,
-              expiryDate: _expiryDate,
-              notes: _notesController.text.trim().isEmpty
-                  ? null
-                  : _notesController.text.trim(),
-              categoryId: _selectedCategory?.id,
-              replacementFile: _pickedFile,
-            );
+          existing: existing,
+          title: title,
+          expiryDate: _expiryDate,
+          notes: _notesController.text.trim().isEmpty
+              ? null
+              : _notesController.text.trim(),
+          categoryId: _selectedCategory?.id,
+          replacementFile: _pickedFile,
+        );
         if (mounted) Navigator.of(context).pop();
+      } catch (_) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text(
+                'Could not save changes. Unlock the vault and try again.',
+              ),
+            ),
+          );
+        }
       } finally {
         if (mounted) setState(() => _isSaving = false);
       }
@@ -130,15 +141,25 @@ class _EditDocumentScreenState extends State<EditDocumentScreen> {
     try {
       final picked = _pickedFile!;
       await context.read<DocumentListProvider>().addDocumentFromPicker(
-            title: title,
-            pickedFile: picked,
-            expiryDate: _expiryDate,
-            notes: _notesController.text.trim().isEmpty
-                ? null
-                : _notesController.text.trim(),
-            categoryId: _selectedCategory?.id,
-          );
+        title: title,
+        pickedFile: picked,
+        expiryDate: _expiryDate,
+        notes: _notesController.text.trim().isEmpty
+            ? null
+            : _notesController.text.trim(),
+        categoryId: _selectedCategory?.id,
+      );
       if (mounted) Navigator.of(context).pop();
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Could not save the document. Your details have been kept.',
+            ),
+          ),
+        );
+      }
     } finally {
       if (mounted) setState(() => _isSaving = false);
     }
@@ -151,7 +172,8 @@ class _EditDocumentScreenState extends State<EditDocumentScreen> {
     final categories = context.watch<CategoryListProvider>().categories;
     _tryResolveCategoryFromExisting();
 
-    final canSave = _titleController.text.trim().isNotEmpty &&
+    final canSave =
+        _titleController.text.trim().isNotEmpty &&
         (_isEditing || _pickedFile != null);
 
     return Scaffold(
@@ -163,10 +185,7 @@ class _EditDocumentScreenState extends State<EditDocumentScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(
-              'Details',
-              style: textTheme.titleMedium,
-            ),
+            Text('Details', style: textTheme.titleMedium),
             const SizedBox(height: 12),
             Card(
               child: Padding(
@@ -176,14 +195,13 @@ class _EditDocumentScreenState extends State<EditDocumentScreen> {
                     TextField(
                       controller: _titleController,
                       textCapitalization: TextCapitalization.sentences,
-                      decoration: const InputDecoration(
-                        labelText: 'Title',
-                      ),
+                      decoration: const InputDecoration(labelText: 'Title'),
                     ),
                     if (categories.isNotEmpty) ...[
                       const SizedBox(height: 16),
                       DropdownButtonFormField<VaultCategory?>(
-                        value: _selectedCategory,
+                        key: ValueKey(_selectedCategory?.id),
+                        initialValue: _selectedCategory,
                         items: [
                           const DropdownMenuItem<VaultCategory?>(
                             value: null,
@@ -211,10 +229,7 @@ class _EditDocumentScreenState extends State<EditDocumentScreen> {
               ),
             ),
             const SizedBox(height: 24),
-            Text(
-              'File',
-              style: textTheme.titleMedium,
-            ),
+            Text('File', style: textTheme.titleMedium),
             const SizedBox(height: 12),
             if (_isEditing) ...[
               Card(
@@ -226,12 +241,13 @@ class _EditDocumentScreenState extends State<EditDocumentScreen> {
                       Row(
                         children: [
                           Icon(
-                            widget.existing!.fileType == VaultDocumentFileType.pdf
+                            widget.existing!.fileType ==
+                                    VaultDocumentFileType.pdf
                                 ? Icons.picture_as_pdf_rounded
                                 : widget.existing!.fileType ==
-                                        VaultDocumentFileType.image
-                                    ? Icons.image_outlined
-                                    : Icons.insert_drive_file_outlined,
+                                      VaultDocumentFileType.image
+                                ? Icons.image_outlined
+                                : Icons.insert_drive_file_outlined,
                             color: scheme.primary,
                             size: 28,
                           ),
@@ -265,8 +281,8 @@ class _EditDocumentScreenState extends State<EditDocumentScreen> {
                           Expanded(
                             child: OutlinedButton.icon(
                               onPressed: () async {
-                                final result =
-                                    await _picker.captureFromCamera();
+                                final result = await _picker
+                                    .captureFromCamera();
                                 if (result != null) {
                                   setState(() => _pickedFile = result);
                                 }
@@ -280,11 +296,12 @@ class _EditDocumentScreenState extends State<EditDocumentScreen> {
                       const SizedBox(height: 10),
                       OutlinedButton.icon(
                         onPressed: () async {
-                          final result = await Navigator.of(context).push<PickedDocumentFile>(
-                            MaterialPageRoute<PickedDocumentFile>(
-                              builder: (_) => const CameraScannerScreen(),
-                            ),
-                          );
+                          final result = await Navigator.of(context)
+                              .push<PickedDocumentFile>(
+                                MaterialPageRoute<PickedDocumentFile>(
+                                  builder: (_) => const CameraScannerScreen(),
+                                ),
+                              );
                           if (result != null) {
                             setState(() => _pickedFile = result);
                           }
@@ -306,8 +323,9 @@ class _EditDocumentScreenState extends State<EditDocumentScreen> {
                       if (_pickedFile != null) ...[
                         const SizedBox(height: 14),
                         Material(
-                          color: scheme.surfaceContainerHighest
-                              .withValues(alpha: 0.65),
+                          color: scheme.surfaceContainerHighest.withValues(
+                            alpha: 0.65,
+                          ),
                           borderRadius: BorderRadius.circular(14),
                           child: Padding(
                             padding: const EdgeInsets.symmetric(
@@ -332,7 +350,8 @@ class _EditDocumentScreenState extends State<EditDocumentScreen> {
                                 ),
                                 IconButton(
                                   tooltip: 'Cancel replacement',
-                                  onPressed: () => setState(() => _pickedFile = null),
+                                  onPressed: () =>
+                                      setState(() => _pickedFile = null),
                                   icon: const Icon(Icons.close_rounded),
                                 ),
                               ],
@@ -369,8 +388,8 @@ class _EditDocumentScreenState extends State<EditDocumentScreen> {
                           Expanded(
                             child: OutlinedButton.icon(
                               onPressed: () async {
-                                final result =
-                                    await _picker.captureFromCamera();
+                                final result = await _picker
+                                    .captureFromCamera();
                                 if (result != null) {
                                   setState(() => _pickedFile = result);
                                 }
@@ -382,21 +401,22 @@ class _EditDocumentScreenState extends State<EditDocumentScreen> {
                         ],
                       ),
                       const SizedBox(height: 10),
-                    OutlinedButton.icon(
-                      onPressed: () async {
-                        final result = await Navigator.of(context).push<PickedDocumentFile>(
-                          MaterialPageRoute<PickedDocumentFile>(
-                            builder: (_) => const CameraScannerScreen(),
-                          ),
-                        );
-                        if (result != null) {
-                          setState(() => _pickedFile = result);
-                        }
-                      },
-                      icon: const Icon(Icons.document_scanner_outlined),
-                      label: const Text('Scan document'),
-                    ),
-                    const SizedBox(height: 10),
+                      OutlinedButton.icon(
+                        onPressed: () async {
+                          final result = await Navigator.of(context)
+                              .push<PickedDocumentFile>(
+                                MaterialPageRoute<PickedDocumentFile>(
+                                  builder: (_) => const CameraScannerScreen(),
+                                ),
+                              );
+                          if (result != null) {
+                            setState(() => _pickedFile = result);
+                          }
+                        },
+                        icon: const Icon(Icons.document_scanner_outlined),
+                        label: const Text('Scan document'),
+                      ),
+                      const SizedBox(height: 10),
                       OutlinedButton.icon(
                         onPressed: () async {
                           final result = await _picker.pickPdf();
@@ -410,8 +430,9 @@ class _EditDocumentScreenState extends State<EditDocumentScreen> {
                       if (_pickedFile != null) ...[
                         const SizedBox(height: 14),
                         Material(
-                          color: scheme.surfaceContainerHighest
-                              .withValues(alpha: 0.65),
+                          color: scheme.surfaceContainerHighest.withValues(
+                            alpha: 0.65,
+                          ),
                           borderRadius: BorderRadius.circular(14),
                           child: Padding(
                             padding: const EdgeInsets.symmetric(
@@ -444,10 +465,7 @@ class _EditDocumentScreenState extends State<EditDocumentScreen> {
                 ),
               ),
             const SizedBox(height: 24),
-            Text(
-              'Expiry & notes',
-              style: textTheme.titleMedium,
-            ),
+            Text('Expiry & notes', style: textTheme.titleMedium),
             const SizedBox(height: 12),
             Card(
               child: Padding(
@@ -509,8 +527,8 @@ class _EditDocumentScreenState extends State<EditDocumentScreen> {
               _isSaving
                   ? 'Saving…'
                   : _isEditing
-                      ? 'Save changes'
-                      : 'Save to vault',
+                  ? 'Save changes'
+                  : 'Save to vault',
             ),
           ),
         ),

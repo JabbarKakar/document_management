@@ -25,6 +25,9 @@ class DocumentListProvider extends ChangeNotifier {
   final DocumentThumbnailCacheService _thumbnailCache;
 
   bool _isLoading = false;
+  String? _errorMessage;
+  int _queryGeneration = 0;
+  String? get errorMessage => _errorMessage;
   List<VaultDocument> _documents = [];
   String _currentQuery = '';
   int? _currentCategoryFilter;
@@ -42,8 +45,7 @@ class DocumentListProvider extends ChangeNotifier {
 
   /// Search, category, file type, or expiry filters (sort is not included).
   bool get hasActiveListFilters =>
-      _currentQuery.isNotEmpty ||
-      hasStructuredFilters;
+      _currentQuery.isNotEmpty || hasStructuredFilters;
 
   /// Category / file-type / expiry only (excludes search). Used for filter badge.
   bool get hasStructuredFilters =>
@@ -70,20 +72,7 @@ class DocumentListProvider extends ChangeNotifier {
     sortVaultDocuments(_documents, _sortMode);
   }
 
-  Future<void> loadDocuments() async {
-    _isLoading = true;
-    notifyListeners();
-
-    final baseList = await _repository.getAllDocuments();
-    _documents = applyAdvancedFilters(
-      baseList,
-      fileTypeFilter: _fileTypeFilter,
-      expiryFilter: _expiryFilter,
-    );
-    _applySortToCurrentList();
-    _isLoading = false;
-    notifyListeners();
-  }
+  Future<void> loadDocuments() => _runFilteredQuery();
 
   Future<void> setSearchQuery(String query) async {
     _currentQuery = query;
@@ -127,27 +116,39 @@ class DocumentListProvider extends ChangeNotifier {
   }
 
   Future<void> _runFilteredQuery() async {
+    final generation = ++_queryGeneration;
     _isLoading = true;
     notifyListeners();
-
-    final List<VaultDocument> baseList;
-    if (_currentQuery.isEmpty && _currentCategoryFilter == null) {
-      baseList = await _repository.getAllDocuments();
-    } else {
-      baseList = await _repository.searchDocuments(
-        query: _currentQuery,
-        categoryId: _currentCategoryFilter,
+    try {
+      final List<VaultDocument> baseList;
+      if (_currentQuery.isEmpty && _currentCategoryFilter == null) {
+        baseList = await _repository.getAllDocuments();
+      } else {
+        baseList = await _repository.searchDocuments(
+          query: _currentQuery,
+          categoryId: _currentCategoryFilter,
+        );
+      }
+      if (generation != _queryGeneration) return;
+      _documents = applyAdvancedFilters(
+        baseList,
+        fileTypeFilter: _fileTypeFilter,
+        expiryFilter: _expiryFilter,
       );
-    }
-    _documents = applyAdvancedFilters(
-      baseList,
-      fileTypeFilter: _fileTypeFilter,
-      expiryFilter: _expiryFilter,
-    );
-    _applySortToCurrentList();
+      _applySortToCurrentList();
 
-    _isLoading = false;
-    notifyListeners();
+      _isLoading = false;
+      notifyListeners();
+    } catch (_) {
+      if (generation == _queryGeneration) {
+        _errorMessage = 'Could not load documents. Please retry.';
+      }
+    } finally {
+      if (generation == _queryGeneration) {
+        _isLoading = false;
+        notifyListeners();
+      }
+    }
   }
 
   Future<void> addDocumentFromPicker({
@@ -159,19 +160,23 @@ class DocumentListProvider extends ChangeNotifier {
   }) async {
     _isLoading = true;
     notifyListeners();
+    try {
+      final added = await _repository.addDocument(
+        title: title,
+        fileBytes: pickedFile.bytes,
+        originalFileName: pickedFile.fileName,
+        fileType: pickedFile.fileType,
+        expiryDate: expiryDate,
+        notes: notes,
+        categoryId: categoryId,
+      );
+      await _rescheduleSafely(added);
 
-    final added = await _repository.addDocument(
-      title: title,
-      fileBytes: pickedFile.bytes,
-      originalFileName: pickedFile.fileName,
-      fileType: pickedFile.fileType,
-      expiryDate: expiryDate,
-      notes: notes,
-      categoryId: categoryId,
-    );
-    await _expiryReminders.rescheduleForDocument(added);
-
-    await _runFilteredQuery();
+      await _runFilteredQuery();
+    } finally {
+      _isLoading = false;
+      notifyListeners();
+    }
   }
 
   Future<BulkImportReport> importDocumentsFromPickerFiles({
@@ -181,7 +186,8 @@ class DocumentListProvider extends ChangeNotifier {
       required int completed,
       required int total,
       required String fileName,
-    })? onProgress,
+    })?
+    onProgress,
   }) async {
     if (files.isEmpty) {
       return BulkImportReport(total: 0, succeeded: 0, failedNames: const []);
@@ -189,42 +195,46 @@ class DocumentListProvider extends ChangeNotifier {
 
     _isLoading = true;
     notifyListeners();
+    try {
+      var completed = 0;
+      var succeeded = 0;
+      final failed = <String>[];
 
-    var completed = 0;
-    var succeeded = 0;
-    final failed = <String>[];
-
-    for (final f in files) {
-      try {
-        final added = await _repository.addDocument(
-          title: _defaultTitleFromFileName(f.fileName),
-          fileBytes: f.bytes,
-          originalFileName: f.fileName,
-          fileType: f.fileType,
-          categoryId: categoryId,
-          expiryDate: null,
-          notes: null,
-        );
-        await _expiryReminders.rescheduleForDocument(added);
-        succeeded++;
-      } catch (_) {
-        failed.add(f.fileName);
-      } finally {
-        completed++;
-        onProgress?.call(
-          completed: completed,
-          total: files.length,
-          fileName: f.fileName,
-        );
+      for (final f in files) {
+        try {
+          final added = await _repository.addDocument(
+            title: _defaultTitleFromFileName(f.fileName),
+            fileBytes: f.bytes,
+            originalFileName: f.fileName,
+            fileType: f.fileType,
+            categoryId: categoryId,
+            expiryDate: null,
+            notes: null,
+          );
+          await _rescheduleSafely(added);
+          succeeded++;
+        } catch (_) {
+          failed.add(f.fileName);
+        } finally {
+          completed++;
+          onProgress?.call(
+            completed: completed,
+            total: files.length,
+            fileName: f.fileName,
+          );
+        }
       }
-    }
 
-    await _runFilteredQuery();
-    return BulkImportReport(
-      total: files.length,
-      succeeded: succeeded,
-      failedNames: failed,
-    );
+      await _runFilteredQuery();
+      return BulkImportReport(
+        total: files.length,
+        succeeded: succeeded,
+        failedNames: failed,
+      );
+    } finally {
+      _isLoading = false;
+      notifyListeners();
+    }
   }
 
   Future<void> updateDocumentMetadata({
@@ -241,7 +251,7 @@ class DocumentListProvider extends ChangeNotifier {
       expiryDate: expiryDate,
       notes: notes,
     );
-    await _expiryReminders.rescheduleForDocument(updated);
+    await _rescheduleSafely(updated);
     await _runFilteredQuery();
   }
 
@@ -256,27 +266,33 @@ class DocumentListProvider extends ChangeNotifier {
   }) async {
     _isLoading = true;
     notifyListeners();
+    try {
+      if (replacementFile != null) {
+        await _repository.replaceDocumentFile(
+          id: existing.id,
+          fileBytes: replacementFile.bytes,
+          originalFileName: replacementFile.fileName,
+          fileType: replacementFile.fileType,
+        );
+        _thumbnailCache.removeByDocument(existing.id);
+        await _expiryReminders.deleteNotificationPreviewForDocument(
+          existing.id,
+        );
+      }
 
-    if (replacementFile != null) {
-      await _repository.replaceDocumentFile(
+      final updated = await _repository.updateDocumentMetadata(
         id: existing.id,
-        fileBytes: replacementFile.bytes,
-        originalFileName: replacementFile.fileName,
-        fileType: replacementFile.fileType,
+        title: title,
+        categoryId: categoryId,
+        expiryDate: expiryDate,
+        notes: notes,
       );
-      _thumbnailCache.removeByDocument(existing.id);
-      await _expiryReminders.deleteNotificationPreviewForDocument(existing.id);
+      await _rescheduleSafely(updated);
+      await _runFilteredQuery();
+    } finally {
+      _isLoading = false;
+      notifyListeners();
     }
-
-    final updated = await _repository.updateDocumentMetadata(
-      id: existing.id,
-      title: title,
-      categoryId: categoryId,
-      expiryDate: expiryDate,
-      notes: notes,
-    );
-    await _expiryReminders.rescheduleForDocument(updated);
-    await _runFilteredQuery();
   }
 
   /// Batch action (Module 12): set category for currently selected documents.
@@ -287,17 +303,21 @@ class DocumentListProvider extends ChangeNotifier {
     if (documents.isEmpty) return;
     _isLoading = true;
     notifyListeners();
-
-    for (final doc in documents) {
-      await _repository.updateDocumentMetadata(
-        id: doc.id,
-        title: doc.title,
-        categoryId: categoryId,
-        expiryDate: doc.expiryDate,
-        notes: doc.notes,
-      );
+    try {
+      for (final doc in documents) {
+        await _repository.updateDocumentMetadata(
+          id: doc.id,
+          title: doc.title,
+          categoryId: categoryId,
+          expiryDate: doc.expiryDate,
+          notes: doc.notes,
+        );
+      }
+      await _runFilteredQuery();
+    } finally {
+      _isLoading = false;
+      notifyListeners();
     }
-    await _runFilteredQuery();
   }
 
   /// Batch action (Module 12): delete many documents in one refresh cycle.
@@ -305,25 +325,42 @@ class DocumentListProvider extends ChangeNotifier {
     if (documents.isEmpty) return;
     _isLoading = true;
     notifyListeners();
-
-    for (final doc in documents) {
-      await _expiryReminders.cancelForDocument(doc.id);
-      await _expiryReminders.deleteNotificationPreviewForDocument(doc.id);
-      await _repository.deleteDocument(doc);
-      _thumbnailCache.removeByDocument(doc.id);
+    try {
+      for (final doc in documents) {
+        await _expiryReminders.cancelForDocument(doc.id);
+        await _expiryReminders.deleteNotificationPreviewForDocument(doc.id);
+        await _repository.deleteDocument(doc);
+        _thumbnailCache.removeByDocument(doc.id);
+      }
+      await _runFilteredQuery();
+    } finally {
+      _isLoading = false;
+      notifyListeners();
     }
-    await _runFilteredQuery();
   }
 
   Future<void> deleteDocument(VaultDocument document) async {
     _isLoading = true;
     notifyListeners();
+    try {
+      await _expiryReminders.cancelForDocument(document.id);
+      await _expiryReminders.deleteNotificationPreviewForDocument(document.id);
+      await _repository.deleteDocument(document);
+      _thumbnailCache.removeByDocument(document.id);
+      await _runFilteredQuery();
+    } finally {
+      _isLoading = false;
+      notifyListeners();
+    }
+  }
 
-    await _expiryReminders.cancelForDocument(document.id);
-    await _expiryReminders.deleteNotificationPreviewForDocument(document.id);
-    await _repository.deleteDocument(document);
-    _thumbnailCache.removeByDocument(document.id);
-    await _runFilteredQuery();
+  Future<void> _rescheduleSafely(VaultDocument document) async {
+    try {
+      await _expiryReminders.rescheduleForDocument(document);
+    } catch (_) {
+      _errorMessage =
+          'Document saved. Reminders could not be scheduled; retry from Settings.';
+    }
   }
 
   String _defaultTitleFromFileName(String fileName) {

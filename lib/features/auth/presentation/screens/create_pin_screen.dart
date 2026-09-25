@@ -56,7 +56,7 @@ class _CreatePinScreenState extends State<CreatePinScreen> {
             ),
             const SizedBox(height: 8),
             Text(
-              'At least 4 digits. You will use this to unlock the vault.',
+              'Use 4 to 8 digits. You can also unlock or recover your PIN with your device passcode, fingerprint, or Face ID.',
               textAlign: TextAlign.center,
               style: textTheme.bodyMedium?.copyWith(
                 color: scheme.onSurfaceVariant,
@@ -110,7 +110,7 @@ class _CreatePinScreenState extends State<CreatePinScreen> {
             ],
             const SizedBox(height: 24),
             FilledButton(
-              onPressed: _submit,
+              onPressed: provider.isBusy ? null : _submit,
               child: const Text('Save and continue'),
             ),
           ],

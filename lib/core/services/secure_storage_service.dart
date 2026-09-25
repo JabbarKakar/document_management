@@ -1,12 +1,8 @@
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 class SecureStorageService {
-  SecureStorageService._(this._storage);
-
-  factory SecureStorageService() {
-    const storage = FlutterSecureStorage();
-    return SecureStorageService._(storage);
-  }
+  SecureStorageService({FlutterSecureStorage? storage})
+    : _storage = storage ?? const FlutterSecureStorage();
 
   final FlutterSecureStorage _storage;
 
@@ -72,6 +68,11 @@ class SecureStorageService {
     return _storage.read(key: _pinHashKey);
   }
 
+  Future<String?> readPinAttempts() => _storage.read(key: 'pin_attempts');
+
+  Future<void> writePinAttempts(String value) =>
+      _storage.write(key: 'pin_attempts', value: value);
+
   Future<int> getLockTimeoutSeconds() async {
     final value = await _storage.read(key: _lockTimeoutKey);
     if (value == null) return _defaultLockTimeoutSeconds;
@@ -107,5 +108,10 @@ class SecureStorageService {
       value: enabled ? 'true' : 'false',
     );
   }
-}
 
+  Future<bool> getPrivateNotifications() async =>
+      await _storage.read(key: 'private_notifications') != 'false';
+
+  Future<void> setPrivateNotifications(bool value) =>
+      _storage.write(key: 'private_notifications', value: value.toString());
+}

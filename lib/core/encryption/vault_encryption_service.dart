@@ -16,6 +16,7 @@ class VaultEncryptionService {
   static const String _magic = 'DM_ENC_v1';
 
   enc.Key? _cachedKey;
+  int _generation = 0;
 
   static Uint8List _hexToBytes(String hex) {
     if (hex.length % 2 != 0) {
@@ -30,7 +31,11 @@ class VaultEncryptionService {
 
   Future<enc.Key> _loadKey() async {
     if (_cachedKey != null) return _cachedKey!;
+    final generation = _generation;
     final hex = await _secureStorage.readEncryptionKey();
+    if (generation != _generation) {
+      throw StateError('Vault locked during decryption.');
+    }
     if (hex == null || hex.isEmpty) {
       throw StateError('Encryption key not available');
     }
@@ -44,6 +49,7 @@ class VaultEncryptionService {
 
   /// Clears the in-memory key material (e.g. after backgrounding if desired).
   void clearKeyFromMemory() {
+    _generation++;
     _cachedKey = null;
   }
 
@@ -84,10 +90,7 @@ class VaultEncryptionService {
     final cipherBytes = Uint8List.sublistView(stored, cipherStart);
     final key = await _loadKey();
     final encrypter = enc.Encrypter(enc.AES(key, mode: enc.AESMode.cbc));
-    final plain = encrypter.decryptBytes(
-      enc.Encrypted(cipherBytes),
-      iv: iv,
-    );
+    final plain = encrypter.decryptBytes(enc.Encrypted(cipherBytes), iv: iv);
     return Uint8List.fromList(plain);
   }
 }

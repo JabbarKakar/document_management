@@ -102,10 +102,7 @@ IconData _fallbackIcon(VaultDocumentFileType t) {
 
 /// Leading thumbnail: decrypted image, first PDF page render, or type icon.
 class VaultDocumentThumbnail extends StatefulWidget {
-  const VaultDocumentThumbnail({
-    super.key,
-    required this.document,
-  });
+  const VaultDocumentThumbnail({super.key, required this.document});
 
   final VaultDocument document;
 
@@ -147,10 +144,13 @@ class _VaultDocumentThumbnailState extends State<VaultDocumentThumbnail> {
       key: cacheKey,
       loader: () async {
         try {
-          final bytes =
-              await storage.readDecryptedBytes(widget.document.filePath);
+          final bytes = await storage.readDecryptedBytes(
+            widget.document.filePath,
+          );
           if (_isPdfDocument(widget.document)) {
-            return _PdfThumbnailLock.run(() => _renderPdfFirstPageThumb(bytes));
+            return await _PdfThumbnailLock.run(
+              () => _renderPdfFirstPageThumb(bytes),
+            );
           }
           final pngThumb = await _renderImageThumbBytes(
             bytes,
@@ -271,18 +271,16 @@ class VaultDocumentListCard extends StatelessWidget {
     final expiry = document.expiryDate;
     final expiryUrgent = expiry != null && isExpiryUrgentRed(expiry);
     final expiryColor = expiryUrgent ? scheme.error : scheme.onSurfaceVariant;
-    final expiryIconColor =
-        expiryUrgent ? scheme.error : scheme.onSurfaceVariant.withValues(alpha: 0.9);
+    final expiryIconColor = expiryUrgent
+        ? scheme.error
+        : scheme.onSurfaceVariant.withValues(alpha: 0.9);
 
     return Card(
       clipBehavior: Clip.antiAlias,
       child: ListTile(
         onTap: onOpen,
         onLongPress: onLongPress,
-        contentPadding: const EdgeInsets.symmetric(
-          horizontal: 12,
-          vertical: 8,
-        ),
+        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
         leading: VaultDocumentThumbnail(
           key: ValueKey<String>('${document.id}|${document.filePath}'),
           document: document,
@@ -306,11 +304,7 @@ class VaultDocumentListCard extends StatelessWidget {
               const SizedBox(height: 4),
               Row(
                 children: [
-                  Icon(
-                    Icons.event_rounded,
-                    size: 14,
-                    color: expiryIconColor,
-                  ),
+                  Icon(Icons.event_rounded, size: 14, color: expiryIconColor),
                   const SizedBox(width: 4),
                   Expanded(
                     child: Text(
@@ -388,8 +382,4 @@ class VaultDocumentListCard extends StatelessWidget {
   }
 }
 
-enum _CardAction {
-  details,
-  edit,
-  delete,
-}
+enum _CardAction { details, edit, delete }

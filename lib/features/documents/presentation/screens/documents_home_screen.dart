@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:share_plus/share_plus.dart';
 
 import '../../../../core/providers/theme_controller.dart';
 import '../../../../core/services/document_export_service.dart';
@@ -103,9 +104,12 @@ class _DocumentsHomeScreenState extends State<DocumentsHomeScreen> {
 
   Future<bool> _confirmExportCount(int count) async {
     final ok = await showDialog<bool>(
+      useRootNavigator: false,
       context: context,
       builder: (context) => AlertDialog(
-        title: Text(count == 1 ? 'Export document?' : 'Export $count documents?'),
+        title: Text(
+          count == 1 ? 'Export document?' : 'Export $count documents?',
+        ),
         content: const Text(
           'Exported files are decrypted copies and will be saved unencrypted outside the vault.',
         ),
@@ -146,18 +150,18 @@ class _DocumentsHomeScreenState extends State<DocumentsHomeScreen> {
     );
 
     try {
-      await exportService.exportDocumentsViaShare(
-            documents: docs,
-            storage: storage,
-            message: docs.length == 1 ? docs.first.title.trim() : null,
-          );
+      final result = await exportService.exportDocumentsViaShare(
+        documents: docs,
+        storage: storage,
+        message: docs.length == 1 ? docs.first.title.trim() : null,
+        sharePositionOrigin: Rect.fromLTWH(0, 0, MediaQuery.sizeOf(context).width, 1),
+      );
       if (!mounted) return;
       messenger.showSnackBar(
         SnackBar(
           content: Text(
-            docs.length == 1
-                ? 'Export sheet opened.'
-                : 'Export sheet opened for ${docs.length} documents.',
+            result.status == ShareResultStatus.dismissed ? 'Export cancelled.'
+                : 'Prepared ${docs.length} document(s) for sharing.',
           ),
           duration: const Duration(seconds: 2),
         ),
@@ -226,6 +230,7 @@ class _DocumentsHomeScreenState extends State<DocumentsHomeScreen> {
     if (!mounted) return;
 
     final ok = await showDialog<bool>(
+      useRootNavigator: false,
       context: context,
       builder: (context) => AlertDialog(
         title: Text('Import ${files.length} files?'),
@@ -248,9 +253,14 @@ class _DocumentsHomeScreenState extends State<DocumentsHomeScreen> {
     );
     if (ok != true || !mounted) return;
 
-    final progress = ValueNotifier<(int, int, String)>((0, files.length, 'Starting...'));
+    final progress = ValueNotifier<(int, int, String)>((
+      0,
+      files.length,
+      'Starting...',
+    ));
     setState(() => _isImporting = true);
     showDialog<void>(
+      useRootNavigator: false,
       context: context,
       barrierDismissible: false,
       builder: (_) => PopScope(
@@ -272,11 +282,7 @@ class _DocumentsHomeScreenState extends State<DocumentsHomeScreen> {
                   const SizedBox(height: 10),
                   LinearProgressIndicator(value: v),
                   const SizedBox(height: 12),
-                  Text(
-                    current,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                  ),
+                  Text(current, maxLines: 2, overflow: TextOverflow.ellipsis),
                 ],
               );
             },
@@ -288,23 +294,26 @@ class _DocumentsHomeScreenState extends State<DocumentsHomeScreen> {
     BulkImportReport? report;
     Object? importError;
     try {
-      report = await context.read<DocumentListProvider>().importDocumentsFromPickerFiles(
+      report = await context
+          .read<DocumentListProvider>()
+          .importDocumentsFromPickerFiles(
             files: files,
             categoryId: categoryId,
-            onProgress: ({
-              required int completed,
-              required int total,
-              required String fileName,
-            }) {
-              progress.value = (completed, total, fileName);
-            },
+            onProgress:
+                ({
+                  required int completed,
+                  required int total,
+                  required String fileName,
+                }) {
+                  progress.value = (completed, total, fileName);
+                },
           );
     } catch (e) {
       importError = e;
     } finally {
       progress.dispose();
       if (mounted) {
-        Navigator.of(context, rootNavigator: true).pop(); // progress dialog
+        Navigator.of(context).pop(); // progress dialog
         setState(() => _isImporting = false);
       }
     }
@@ -319,6 +328,7 @@ class _DocumentsHomeScreenState extends State<DocumentsHomeScreen> {
     final r = report;
 
     await showDialog<void>(
+      useRootNavigator: false,
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Import finished'),
@@ -326,7 +336,7 @@ class _DocumentsHomeScreenState extends State<DocumentsHomeScreen> {
           r.failedNames.isEmpty
               ? 'Imported ${r.succeeded} of ${r.total} files successfully.'
               : 'Imported ${r.succeeded} of ${r.total} files.\n'
-                  '${r.failedNames.length} failed.',
+                    '${r.failedNames.length} failed.',
         ),
         actions: [
           FilledButton(
@@ -346,7 +356,7 @@ class _DocumentsHomeScreenState extends State<DocumentsHomeScreen> {
       document: doc,
       onOpen: () => _openViewer(doc),
       onEdit: () => _pushEditScreen(doc),
-      onDelete: () => context.read<DocumentListProvider>().deleteDocument(doc),
+      onDelete: () => _confirmBatchDelete([doc]),
       onExport: () => _exportDocuments([doc]),
     );
   }
@@ -377,7 +387,9 @@ class _DocumentsHomeScreenState extends State<DocumentsHomeScreen> {
     if (_selectedIds.any((id) => !visibleIds.contains(id))) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted) return;
-        setState(() => _selectedIds.removeWhere((id) => !visibleIds.contains(id)));
+        setState(
+          () => _selectedIds.removeWhere((id) => !visibleIds.contains(id)),
+        );
       });
     }
   }
@@ -397,8 +409,11 @@ class _DocumentsHomeScreenState extends State<DocumentsHomeScreen> {
 
   Future<void> _confirmBatchDelete(List<VaultDocument> selected) async {
     if (selected.isEmpty) return;
+    if (!await _ensureUnlocked(reason: 'delete')) return;
+    if (!mounted) return;
     final count = selected.length;
     final ok = await showDialog<bool>(
+      useRootNavigator: false,
       context: context,
       builder: (context) => AlertDialog(
         title: Text('Delete $count documents?'),
@@ -418,7 +433,20 @@ class _DocumentsHomeScreenState extends State<DocumentsHomeScreen> {
       ),
     );
     if (ok != true || !mounted) return;
-    await context.read<DocumentListProvider>().deleteDocuments(selected);
+    if (!await _ensureUnlocked(reason: 'delete')) return;
+    if (!mounted) return;
+    try {
+      await context.read<DocumentListProvider>().deleteDocuments(selected);
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Some documents could not be deleted. Please retry.'),
+          ),
+        );
+      }
+      return;
+    }
     if (!mounted) return;
     _clearSelection();
   }
@@ -461,9 +489,10 @@ class _DocumentsHomeScreenState extends State<DocumentsHomeScreen> {
       },
     );
     if (!mounted || picked == null || picked.$1 != true) return;
-    await context
-        .read<DocumentListProvider>()
-        .setCategoryForDocuments(selected, categoryId: picked.$2);
+    await context.read<DocumentListProvider>().setCategoryForDocuments(
+      selected,
+      categoryId: picked.$2,
+    );
     if (!mounted) return;
     _clearSelection();
   }
@@ -477,7 +506,8 @@ class _DocumentsHomeScreenState extends State<DocumentsHomeScreen> {
     _syncSelectionWithVisible(visibleDocs);
     final selectedVisibleDocs = _selectedVisibleDocuments(visibleDocs);
     final allVisibleSelected =
-        visibleDocs.isNotEmpty && selectedVisibleDocs.length == visibleDocs.length;
+        visibleDocs.isNotEmpty &&
+        selectedVisibleDocs.length == visibleDocs.length;
 
     return Scaffold(
       body: CustomScrollView(
@@ -490,7 +520,9 @@ class _DocumentsHomeScreenState extends State<DocumentsHomeScreen> {
             actions: [
               if (_selectionMode) ...[
                 IconButton(
-                  tooltip: allVisibleSelected ? 'Clear selection' : 'Select all',
+                  tooltip: allVisibleSelected
+                      ? 'Clear selection'
+                      : 'Select all',
                   icon: Icon(
                     allVisibleSelected
                         ? Icons.deselect_rounded
@@ -630,6 +662,19 @@ class _DocumentsHomeScreenState extends State<DocumentsHomeScreen> {
               ),
             ),
           ),
+          if (provider.errorMessage != null)
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 20,
+                  vertical: 8,
+                ),
+                child: Semantics(
+                  liveRegion: true,
+                  child: Text(provider.errorMessage!),
+                ),
+              ),
+            ),
           if (!_selectionMode && provider.hasActiveListFilters)
             SliverToBoxAdapter(
               child: Padding(
@@ -641,12 +686,13 @@ class _DocumentsHomeScreenState extends State<DocumentsHomeScreen> {
                   children: [
                     if (provider.searchQuery.isNotEmpty)
                       _FilterSummaryChip(
-                        label: '“${provider.searchQuery.length > 28 ? '${provider.searchQuery.substring(0, 28)}…' : provider.searchQuery}”',
+                        label:
+                            '“${provider.searchQuery.length > 28 ? '${provider.searchQuery.substring(0, 28)}…' : provider.searchQuery}”',
                         onDelete: () {
                           _searchController.clear();
-                          context
-                              .read<DocumentListProvider>()
-                              .setSearchQuery('');
+                          context.read<DocumentListProvider>().setSearchQuery(
+                            '',
+                          );
                         },
                       ),
                     if (provider.hasStructuredFilters)
@@ -748,9 +794,11 @@ class _DocumentsHomeScreenState extends State<DocumentsHomeScreen> {
                         _toggleSelection(doc.id);
                         return;
                       }
-                      provider.deleteDocument(doc);
+                      _confirmBatchDelete([doc]);
                     },
-                    onDetails: _selectionMode ? null : () => _openDetailsSheet(doc),
+                    onDetails: _selectionMode
+                        ? null
+                        : () => _openDetailsSheet(doc),
                     selectionMode: _selectionMode,
                     selected: isSelected,
                     onToggleSelected: () => _toggleSelection(doc.id),
@@ -768,35 +816,32 @@ class _DocumentsHomeScreenState extends State<DocumentsHomeScreen> {
       floatingActionButton: _selectionMode
           ? null
           : FloatingActionButton.extended(
-        onPressed: () {
-          Navigator.of(context).push(
-            MaterialPageRoute<void>(
-              builder: (_) => MultiProvider(
-                providers: [
-                  ChangeNotifierProvider.value(
-                    value: context.read<DocumentListProvider>(),
+              onPressed: () {
+                Navigator.of(context).push(
+                  MaterialPageRoute<void>(
+                    builder: (_) => MultiProvider(
+                      providers: [
+                        ChangeNotifierProvider.value(
+                          value: context.read<DocumentListProvider>(),
+                        ),
+                        ChangeNotifierProvider.value(
+                          value: context.read<CategoryListProvider>(),
+                        ),
+                      ],
+                      child: const EditDocumentScreen(),
+                    ),
                   ),
-                  ChangeNotifierProvider.value(
-                    value: context.read<CategoryListProvider>(),
-                  ),
-                ],
-                child: const EditDocumentScreen(),
-              ),
+                );
+              },
+              icon: const Icon(Icons.add_rounded),
+              label: const Text('Add document'),
             ),
-          );
-        },
-        icon: const Icon(Icons.add_rounded),
-        label: const Text('Add document'),
-      ),
     );
   }
 }
 
 class _FilterSummaryChip extends StatelessWidget {
-  const _FilterSummaryChip({
-    required this.label,
-    required this.onDelete,
-  });
+  const _FilterSummaryChip({required this.label, required this.onDelete});
 
   final String label;
   final VoidCallback onDelete;

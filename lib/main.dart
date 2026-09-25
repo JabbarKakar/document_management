@@ -15,10 +15,9 @@ import 'core/services/document_export_service.dart';
 import 'core/services/expiry_reminder_service.dart';
 import 'core/services/document_thumbnail_cache_service.dart';
 import 'core/services/secure_storage_service.dart';
-import 'core/widgets/vault_activity_detector.dart';
+import 'core/services/vault_backup_service.dart';
+import 'core/widgets/vault_session_gate.dart';
 import 'features/auth/presentation/providers/auth_state_provider.dart';
-import 'features/auth/presentation/screens/create_pin_screen.dart';
-import 'features/auth/presentation/screens/lock_screen.dart';
 import 'features/documents/data/repositories/isar_document_repository.dart';
 import 'features/documents/presentation/providers/document_list_provider.dart';
 import 'features/documents/presentation/screens/documents_home_screen.dart';
@@ -72,19 +71,7 @@ class _AppInitGate extends StatefulWidget {
 }
 
 class _AppInitGateState extends State<_AppInitGate> {
-  bool _minSplashElapsed = false;
-
-  @override
-  void initState() {
-    super.initState();
-    Future<void>.delayed(const Duration(seconds: 3)).then((_) {
-      if (mounted) {
-        setState(() {
-          _minSplashElapsed = true;
-        });
-      }
-    });
-  }
+  Widget? _readyTree;
 
   @override
   Widget build(BuildContext context) {
@@ -101,7 +88,7 @@ class _AppInitGateState extends State<_AppInitGate> {
         );
       case AppInitStatus.ready:
         final result = initProvider.result;
-        if (!_minSplashElapsed || result == null) {
+        if (result == null) {
           return const SplashScreen();
         }
 
@@ -114,33 +101,46 @@ class _AppInitGateState extends State<_AppInitGate> {
           );
         }
 
+        if (_readyTree != null) return _readyTree!;
         final vaultPath = result.appDocumentsPath;
         final vaultEncryption = VaultEncryptionService(SecureStorageService());
+        final thumbnailCache = DocumentThumbnailCacheService();
+        final auth = AuthStateProvider(
+          authManager: AuthManager(),
+          onLocked: () {
+            vaultEncryption.clearKeyFromMemory();
+            thumbnailCache.clear();
+          },
+        );
         final fileStorage = EncryptedFileStorageService(
           vaultPath,
           vaultEncryption,
+          requireUnlocked: auth.requireUnlocked,
         );
 
         final expiryReminders = ExpiryReminderService(
           isar: isar,
           plugin: initializer.notificationInitializer.plugin,
           secureStorage: initializer.secureStorage,
-          fileStorage: fileStorage,
         );
-        final thumbnailCache = DocumentThumbnailCacheService();
         final documentExport = DocumentExportService();
 
-        // Providers must stay above [_AuthGate] so locking (swap to [LockScreen])
-        // does not dispose [DocumentListProvider] while pushed routes (e.g. add
-        // document) still need it.
-        return MultiProvider(
+        // One service graph owns the protected nested navigator and its drafts.
+        return _readyTree = MultiProvider(
           providers: [
+            Provider<VaultBackupService>.value(
+              value: VaultBackupService(isar: isar, storage: fileStorage),
+            ),
             Provider<VaultEncryptionService>.value(value: vaultEncryption),
             Provider<EncryptedFileStorageService>.value(value: fileStorage),
             Provider<DocumentExportService>.value(value: documentExport),
-            Provider<SecureStorageService>.value(value: initializer.secureStorage),
+            Provider<SecureStorageService>.value(
+              value: initializer.secureStorage,
+            ),
             Provider<ExpiryReminderService>.value(value: expiryReminders),
-            Provider<DocumentThumbnailCacheService>.value(value: thumbnailCache),
+            Provider<DocumentThumbnailCacheService>.value(
+              value: thumbnailCache,
+            ),
             ChangeNotifierProvider<DocumentListProvider>(
               create: (_) {
                 final list = DocumentListProvider(
@@ -163,14 +163,17 @@ class _AppInitGateState extends State<_AppInitGate> {
             ),
             ChangeNotifierProvider<AuthStateProvider>(
               create: (_) {
-                final authManager = AuthManager();
-                final p = AuthStateProvider(authManager: authManager);
-                p.init();
-                return p;
+                auth.init();
+                return auth;
               },
             ),
           ],
-          child: const _AuthGate(),
+          child: VaultSessionGate(
+            home: _ExpiryBootstrap(
+              service: expiryReminders,
+              child: const DocumentsHomeScreen(),
+            ),
+          ),
         );
     }
   }
@@ -191,7 +194,11 @@ class _ExpiryBootstrapState extends State<_ExpiryBootstrap> {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      unawaited(widget.service.syncAll());
+      unawaited(
+        widget.service.syncAll().catchError((Object _) {
+          // Reminders are retried from settings; they must not crash the vault.
+        }),
+      );
     });
   }
 
@@ -199,56 +206,8 @@ class _ExpiryBootstrapState extends State<_ExpiryBootstrap> {
   Widget build(BuildContext context) => widget.child;
 }
 
-class _AuthGate extends StatefulWidget {
-  const _AuthGate();
-
-  @override
-  State<_AuthGate> createState() => _AuthGateState();
-}
-
-class _AuthGateState extends State<_AuthGate> {
-  AuthStateProvider? _authProvider;
-
-  @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    if (_authProvider == null) {
-      _authProvider = context.read<AuthStateProvider>();
-      WidgetsBinding.instance.addObserver(_authProvider!);
-    }
-  }
-
-  @override
-  void dispose() {
-    if (_authProvider != null) {
-      WidgetsBinding.instance.removeObserver(_authProvider!);
-    }
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final auth = context.watch<AuthStateProvider>();
-    if (auth.needsPinSetup) {
-      return const CreatePinScreen();
-    }
-    if (auth.isLocked) {
-      return const LockScreen();
-    }
-    return VaultActivityDetector(
-      child: _ExpiryBootstrap(
-        service: context.read<ExpiryReminderService>(),
-        child: const DocumentsHomeScreen(),
-      ),
-    );
-  }
-}
-
 class _InitErrorScreen extends StatelessWidget {
-  const _InitErrorScreen({
-    required this.result,
-    required this.onRetry,
-  });
+  const _InitErrorScreen({required this.result, required this.onRetry});
 
   final AppInitResult? result;
   final VoidCallback onRetry;
@@ -269,7 +228,11 @@ class _InitErrorScreen extends StatelessWidget {
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Icon(Icons.cloud_off_rounded, size: 52, color: scheme.error),
+                    Icon(
+                      Icons.cloud_off_rounded,
+                      size: 52,
+                      color: scheme.error,
+                    ),
                     const SizedBox(height: 20),
                     Text(
                       'Cannot start vault',

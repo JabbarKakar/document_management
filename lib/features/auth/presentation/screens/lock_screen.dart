@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
 import '../../../../core/widgets/vault_page_shell.dart';
@@ -6,44 +7,40 @@ import '../providers/auth_state_provider.dart';
 
 class LockScreen extends StatefulWidget {
   const LockScreen({super.key});
-
   @override
   State<LockScreen> createState() => _LockScreenState();
 }
 
 class _LockScreenState extends State<LockScreen> {
-  final _pinController = TextEditingController();
-  bool _obscurePin = true;
+  final _pin = TextEditingController();
+  final _confirmation = TextEditingController();
+  bool _recovering = false;
+  bool _obscure = true;
 
   @override
   void dispose() {
-    _pinController.dispose();
+    _pin.dispose();
+    _confirmation.dispose();
     super.dispose();
   }
 
-  Future<void> _submitPin() async {
-    final pin = _pinController.text;
-    if (pin.isEmpty) return;
-    final ok = await context.read<AuthStateProvider>().unlockWithPin(pin);
+  Future<void> _submit() async {
+    final auth = context.read<AuthStateProvider>();
+    if (auth.isBusy) return;
+    final ok = _recovering
+        ? await auth.resetPinWithDevice(_pin.text, _confirmation.text)
+        : await auth.unlockWithPin(_pin.text);
     if (ok && mounted) {
-      _pinController.clear();
+      _pin.clear();
+      _confirmation.clear();
+      setState(() => _recovering = false);
     }
-  }
-
-  Future<void> _unlockWithBiometrics() async {
-    await context.read<AuthStateProvider>().unlockWithBiometrics();
-  }
-
-  Future<void> _turnOnBiometric() async {
-    await context.read<AuthStateProvider>().enableBiometricAndUnlock();
   }
 
   @override
   Widget build(BuildContext context) {
-    final provider = context.watch<AuthStateProvider>();
-    final scheme = Theme.of(context).colorScheme;
-    final textTheme = Theme.of(context).textTheme;
-
+    final auth = context.watch<AuthStateProvider>();
+    final theme = Theme.of(context);
     return Scaffold(
       body: VaultPageShell(
         child: Column(
@@ -53,82 +50,128 @@ class _LockScreenState extends State<LockScreen> {
             Icon(
               Icons.lock_rounded,
               size: 56,
-              color: scheme.primary,
+              color: theme.colorScheme.primary,
             ),
             const SizedBox(height: 20),
             Text(
-              'Vault locked',
+              _recovering ? 'Reset vault PIN' : 'Vault locked',
               textAlign: TextAlign.center,
-              style: textTheme.headlineSmall,
+              style: theme.textTheme.headlineSmall,
             ),
-            const SizedBox(height: 8),
+            const SizedBox(height: 12),
             Text(
-              'Enter your PIN to continue',
+              _recovering
+                  ? 'Choose a new 4–8 digit PIN. Your device passcode, fingerprint, or Face ID must verify this change. Your documents will stay intact.'
+                  : 'Enter your vault PIN or use your device passcode, fingerprint, or Face ID.',
               textAlign: TextAlign.center,
-              style: textTheme.bodyMedium?.copyWith(
-                color: scheme.onSurfaceVariant,
-              ),
             ),
-            const SizedBox(height: 28),
-            TextField(
-              controller: _pinController,
-              obscureText: _obscurePin,
-              keyboardType: TextInputType.number,
-              maxLength: 8,
-              onSubmitted: (_) => _submitPin(),
-              textInputAction: TextInputAction.done,
-              decoration: InputDecoration(
-                labelText: 'PIN',
-                counterText: '',
-                suffixIcon: IconButton(
-                  icon: Icon(
-                    _obscurePin ? Icons.visibility_outlined : Icons.visibility_off_outlined,
+            const SizedBox(height: 24),
+            if (auth.initialized) ...[
+              TextField(
+                controller: _pin,
+                enabled: !auth.isBusy,
+                obscureText: _obscure,
+                keyboardType: TextInputType.number,
+                // Legacy PINs were not length/digit restricted. Keep them usable
+                // for unlock; only newly created PINs use the stricter policy.
+                maxLength: _recovering ? 8 : null,
+                inputFormatters: _recovering
+                    ? [FilteringTextInputFormatter.digitsOnly]
+                    : null,
+                onSubmitted: (_) => _submit(),
+                decoration: InputDecoration(
+                  labelText: _recovering ? 'New PIN' : 'PIN',
+                  suffixIcon: IconButton(
+                    tooltip: _obscure ? 'Show PIN' : 'Hide PIN',
+                    onPressed: () => setState(() => _obscure = !_obscure),
+                    icon: Icon(
+                      _obscure
+                          ? Icons.visibility_outlined
+                          : Icons.visibility_off_outlined,
+                    ),
                   ),
-                  onPressed: () =>
-                      setState(() => _obscurePin = !_obscurePin),
                 ),
               ),
-            ),
-            if (provider.errorMessage != null) ...[
-              const SizedBox(height: 14),
-              Text(
-                provider.errorMessage!,
-                style: textTheme.bodySmall?.copyWith(color: scheme.error),
-                textAlign: TextAlign.center,
+              if (_recovering) ...[
+                const SizedBox(height: 12),
+                TextField(
+                  controller: _confirmation,
+                  enabled: !auth.isBusy,
+                  obscureText: true,
+                  keyboardType: TextInputType.number,
+                  maxLength: 8,
+                  inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                  decoration: const InputDecoration(
+                    labelText: 'Confirm new PIN',
+                  ),
+                  onSubmitted: (_) => _submit(),
+                ),
+              ],
+            ],
+            if (auth.errorMessage != null) ...[
+              const SizedBox(height: 12),
+              Semantics(
+                liveRegion: true,
+                child: Text(
+                  auth.errorMessage!,
+                  textAlign: TextAlign.center,
+                  style: TextStyle(color: theme.colorScheme.error),
+                ),
               ),
             ],
             const SizedBox(height: 24),
             FilledButton(
-              onPressed: _submitPin,
-              child: const Text('Unlock'),
+              onPressed: auth.isBusy
+                  ? null
+                  : (auth.initialized ? _submit : auth.init),
+              child: Text(
+                auth.isBusy
+                    ? 'Please wait…'
+                    : !auth.initialized
+                    ? 'Retry'
+                    : _recovering
+                    ? 'Verify device and reset PIN'
+                    : 'Unlock',
+              ),
             ),
-            if (provider.biometricAvailable && provider.biometricEnrolled) ...[
+            if (auth.initialized &&
+                auth.deviceAuthAvailable &&
+                !_recovering) ...[
               const SizedBox(height: 12),
-              if (provider.biometricEnabled)
-                OutlinedButton.icon(
-                  onPressed: _unlockWithBiometrics,
-                  icon: const Icon(Icons.fingerprint_rounded),
-                  label: const Text('Use biometrics'),
-                )
-              else
-                Column(
-                  children: [
-                    Text(
-                      'Unlock faster next time with biometrics',
-                      textAlign: TextAlign.center,
-                      style: textTheme.bodySmall?.copyWith(
-                        color: scheme.onSurfaceVariant,
-                      ),
-                    ),
-                    const SizedBox(height: 10),
-                    OutlinedButton.icon(
-                      onPressed: _turnOnBiometric,
-                      icon: const Icon(Icons.fingerprint_rounded),
-                      label: const Text('Turn on'),
-                    ),
-                  ],
-                ),
+              OutlinedButton.icon(
+                onPressed: auth.isBusy ? null : auth.unlockWithDevice,
+                icon: const Icon(Icons.phonelink_lock_rounded),
+                label: const Text('Use device unlock'),
+              ),
+              TextButton(
+                onPressed: auth.isBusy
+                    ? null
+                    : () => setState(() {
+                        _pin.clear();
+                        _recovering = true;
+                      }),
+                child: const Text('Forgot PIN?'),
+              ),
             ],
+            if (_recovering)
+              TextButton(
+                onPressed: auth.isBusy
+                    ? null
+                    : () => setState(() {
+                        _recovering = false;
+                        _pin.clear();
+                        _confirmation.clear();
+                      }),
+                child: const Text('Back to unlock'),
+              ),
+            if (auth.initialized && !auth.deviceAuthAvailable)
+              const Padding(
+                padding: EdgeInsets.only(top: 16),
+                child: Text(
+                  'If you cannot use your PIN or device unlock, restore a recovery backup into a new installation. The backup password is required.',
+                  textAlign: TextAlign.center,
+                ),
+              ),
           ],
         ),
       ),

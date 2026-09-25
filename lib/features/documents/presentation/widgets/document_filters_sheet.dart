@@ -53,9 +53,7 @@ class _DocumentFiltersSheetBodyState extends State<_DocumentFiltersSheetBody> {
     final scheme = Theme.of(context).colorScheme;
     return InputDecoration(
       labelText: label,
-      border: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(12),
-      ),
+      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
       filled: true,
       fillColor: scheme.surfaceContainerHighest.withValues(alpha: 0.35),
     );
@@ -78,10 +76,7 @@ class _DocumentFiltersSheetBodyState extends State<_DocumentFiltersSheetBody> {
                 crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
                   Expanded(
-                    child: Text(
-                      'Filters',
-                      style: theme.textTheme.titleLarge,
-                    ),
+                    child: Text('Filters', style: theme.textTheme.titleLarge),
                   ),
                   TextButton(
                     onPressed: docs.hasStructuredFilters
@@ -100,7 +95,8 @@ class _DocumentFiltersSheetBodyState extends State<_DocumentFiltersSheetBody> {
               ),
               const SizedBox(height: 20),
               DropdownButtonFormField<int?>(
-                value: _validCategoryValue(docs.categoryFilter, categories),
+                key: ValueKey(docs.categoryFilter),
+                initialValue: _validCategoryValue(docs.categoryFilter, categories),
                 isExpanded: true,
                 decoration: _fieldDecoration(context, 'Category'),
                 items: [
@@ -119,7 +115,8 @@ class _DocumentFiltersSheetBodyState extends State<_DocumentFiltersSheetBody> {
               ),
               const SizedBox(height: 16),
               DropdownButtonFormField<VaultFileTypeFilter>(
-                value: docs.fileTypeFilter,
+                key: ValueKey(docs.fileTypeFilter),
+                initialValue: docs.fileTypeFilter,
                 isExpanded: true,
                 decoration: _fieldDecoration(context, 'File type'),
                 items: [
@@ -135,7 +132,8 @@ class _DocumentFiltersSheetBodyState extends State<_DocumentFiltersSheetBody> {
               ),
               const SizedBox(height: 16),
               DropdownButtonFormField<VaultExpiryFilter>(
-                value: docs.expiryFilter,
+                key: ValueKey(docs.expiryFilter),
+                initialValue: docs.expiryFilter,
                 isExpanded: true,
                 decoration: _fieldDecoration(context, 'Expiry'),
                 items: [

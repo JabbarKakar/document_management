@@ -22,13 +22,19 @@ class VaultActivityDetector extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Listener(
-      behavior: HitTestBehavior.translucent,
-      onPointerDown: (_) => unawaited(_record(context)),
-      onPointerMove: (_) => unawaited(_record(context)),
-      onPointerSignal: (_) => unawaited(_record(context)),
-      child: child,
+    return Focus(
+      canRequestFocus: false,
+      onKeyEvent: (_, _) {
+        unawaited(_record(context));
+        return KeyEventResult.ignored;
+      },
+      child: Listener(
+        behavior: HitTestBehavior.translucent,
+        onPointerDown: (_) => unawaited(_record(context)),
+        onPointerMove: (_) => unawaited(_record(context)),
+        onPointerSignal: (_) => unawaited(_record(context)),
+        child: child,
+      ),
     );
   }
 }
-

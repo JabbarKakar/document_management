@@ -34,6 +34,7 @@ class _CategoryManagementScreenState extends State<CategoryManagementScreen> {
   ) async {
     final controller = TextEditingController(text: category.name);
     final newName = await showDialog<String>(
+      useRootNavigator: false,
       context: context,
       builder: (ctx) {
         return AlertDialog(
@@ -41,9 +42,7 @@ class _CategoryManagementScreenState extends State<CategoryManagementScreen> {
           content: TextField(
             controller: controller,
             autofocus: true,
-            decoration: const InputDecoration(
-              labelText: 'Name',
-            ),
+            decoration: const InputDecoration(labelText: 'Name'),
           ),
           actions: [
             TextButton(
@@ -51,8 +50,7 @@ class _CategoryManagementScreenState extends State<CategoryManagementScreen> {
               child: const Text('Cancel'),
             ),
             FilledButton(
-              onPressed: () =>
-                  Navigator.of(ctx).pop(controller.text.trim()),
+              onPressed: () => Navigator.of(ctx).pop(controller.text.trim()),
               child: const Text('Save'),
             ),
           ],
@@ -60,9 +58,10 @@ class _CategoryManagementScreenState extends State<CategoryManagementScreen> {
       },
     );
     if (newName != null && newName.isNotEmpty && context.mounted) {
-      await context
-          .read<CategoryListProvider>()
-          .renameCategory(category, newName);
+      await context.read<CategoryListProvider>().renameCategory(
+        category,
+        newName,
+      );
     }
   }
 
@@ -71,6 +70,7 @@ class _CategoryManagementScreenState extends State<CategoryManagementScreen> {
     VaultCategory category,
   ) async {
     final confirmed = await showDialog<bool>(
+      useRootNavigator: false,
       context: context,
       builder: (ctx) {
         return AlertDialog(
@@ -93,8 +93,9 @@ class _CategoryManagementScreenState extends State<CategoryManagementScreen> {
     );
     if (confirmed != true || !context.mounted) return;
 
-    final ok =
-        await context.read<CategoryListProvider>().deleteCategory(category);
+    final ok = await context.read<CategoryListProvider>().deleteCategory(
+      category,
+    );
     if (!ok && context.mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -110,9 +111,7 @@ class _CategoryManagementScreenState extends State<CategoryManagementScreen> {
     final scheme = Theme.of(context).colorScheme;
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Categories'),
-      ),
+      appBar: AppBar(title: const Text('Categories')),
       body: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -145,10 +144,7 @@ class _CategoryManagementScreenState extends State<CategoryManagementScreen> {
             ),
           ),
           if (provider.isLoading)
-            LinearProgressIndicator(
-              minHeight: 2,
-              color: scheme.primary,
-            ),
+            LinearProgressIndicator(minHeight: 2, color: scheme.primary),
           Expanded(
             child: provider.categories.isEmpty
                 ? Center(
@@ -157,8 +153,8 @@ class _CategoryManagementScreenState extends State<CategoryManagementScreen> {
                       child: Text(
                         'No categories yet. Add one above.',
                         style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                              color: scheme.onSurfaceVariant,
-                            ),
+                          color: scheme.onSurfaceVariant,
+                        ),
                         textAlign: TextAlign.center,
                       ),
                     ),
@@ -173,8 +169,9 @@ class _CategoryManagementScreenState extends State<CategoryManagementScreen> {
                       return Card(
                         child: ListTile(
                           leading: CircleAvatar(
-                            backgroundColor:
-                                scheme.primaryContainer.withValues(alpha: 0.9),
+                            backgroundColor: scheme.primaryContainer.withValues(
+                              alpha: 0.9,
+                            ),
                             foregroundColor: scheme.onPrimaryContainer,
                             child: const Icon(Icons.label_outline_rounded),
                           ),
@@ -182,9 +179,7 @@ class _CategoryManagementScreenState extends State<CategoryManagementScreen> {
                           subtitle: category.isDefault
                               ? Text(
                                   'Default',
-                                  style: Theme.of(context)
-                                      .textTheme
-                                      .labelSmall
+                                  style: Theme.of(context).textTheme.labelSmall
                                       ?.copyWith(
                                         color: scheme.tertiary,
                                         letterSpacing: 0.06,

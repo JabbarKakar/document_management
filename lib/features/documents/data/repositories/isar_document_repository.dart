@@ -3,6 +3,7 @@ import 'dart:typed_data';
 import 'package:isar/isar.dart';
 
 import '../../../../core/services/encrypted_file_storage_service.dart';
+import '../../../../core/services/staged_file_commit.dart';
 import '../../domain/entities/vault_document.dart';
 import '../../domain/repositories/document_repository.dart';
 import '../models/vault_document_model.dart';
@@ -11,8 +12,8 @@ class IsarDocumentRepository implements DocumentRepository {
   IsarDocumentRepository({
     required Isar isar,
     required EncryptedFileStorageService fileStorageService,
-  })  : _isar = isar,
-        _fileStorageService = fileStorageService;
+  }) : _isar = isar,
+       _fileStorageService = fileStorageService;
 
   final Isar _isar;
   final EncryptedFileStorageService _fileStorageService;
@@ -76,9 +77,13 @@ class IsarDocumentRepository implements DocumentRepository {
       ..notes = notes
       ..fileType = fileType;
 
-    final id = await _isar.writeTxn<int>(() async {
-      return await _collection.put(model);
-    });
+    final id = await commitStagedFile(
+      commit: () => _isar.writeTxn<int>(() async {
+        _fileStorageService.requireUnlocked?.call();
+        return _collection.put(model);
+      }),
+      rollbackFile: () => _fileStorageService.deleteFile(storedPath),
+    );
 
     model.id = id;
     return model.toEntity();
@@ -93,6 +98,7 @@ class IsarDocumentRepository implements DocumentRepository {
     String? notes,
   }) async {
     final updated = await _isar.writeTxn<VaultDocumentModel>(() async {
+      _fileStorageService.requireUnlocked?.call();
       final m = await _collection.get(id);
       if (m == null) {
         throw StateError('Document $id not found');
@@ -121,8 +127,9 @@ class IsarDocumentRepository implements DocumentRepository {
     );
 
     String? oldPath;
-    try {
-      final updated = await _isar.writeTxn<VaultDocumentModel>(() async {
+    final updated = await commitStagedFile(
+      commit: () => _isar.writeTxn<VaultDocumentModel>(() async {
+        _fileStorageService.requireUnlocked?.call();
         final m = await _collection.get(id);
         if (m == null) {
           throw StateError('Document $id not found');
@@ -132,23 +139,27 @@ class IsarDocumentRepository implements DocumentRepository {
         m.fileType = fileType;
         await _collection.put(m);
         return m;
-      });
-
-      if (oldPath != null && oldPath != newPath) {
-        await _fileStorageService.deleteFile(oldPath!);
-      }
-      return updated.toEntity();
-    } catch (e) {
-      // Rollback best-effort: avoid leaving orphan encrypted files on failure.
-      await _fileStorageService.deleteFile(newPath);
-      rethrow;
-    }
+      }),
+      rollbackFile: () => _fileStorageService.deleteFile(newPath),
+      cleanupSuperseded: () async {
+        if (oldPath != null && oldPath != newPath) {
+          await _fileStorageService.deleteFile(oldPath!);
+        }
+      },
+    );
+    return updated.toEntity();
   }
 
   @override
   Future<void> deleteDocument(VaultDocument document) async {
-    await _fileStorageService.deleteFile(document.filePath);
-    await _isar.writeTxn(() => _collection.delete(document.id));
+    await _isar.writeTxn(() {
+      _fileStorageService.requireUnlocked?.call();
+      return _collection.delete(document.id);
+    });
+    try {
+      await _fileStorageService.deleteFile(document.filePath);
+    } catch (_) {
+      // An orphan is preferable to destroying a file still referenced by a row.
+    }
   }
 }
-

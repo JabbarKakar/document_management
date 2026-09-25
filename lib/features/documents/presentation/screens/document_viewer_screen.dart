@@ -1,15 +1,11 @@
-import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
-import 'package:path/path.dart' as p;
-import 'package:path_provider/path_provider.dart';
 import 'package:pdfx/pdfx.dart';
-import 'package:photo_view/photo_view.dart';
 import 'package:provider/provider.dart';
-import 'package:share_plus/share_plus.dart';
 
 import '../../../../core/services/encrypted_file_storage_service.dart';
+import '../../../../core/services/document_export_service.dart';
 import '../../domain/entities/vault_document.dart';
 
 class DocumentViewerScreen extends StatefulWidget {
@@ -24,7 +20,7 @@ class DocumentViewerScreen extends StatefulWidget {
 class _DocumentViewerScreenState extends State<DocumentViewerScreen> {
   PdfControllerPinch? _pdfController;
   Uint8List? _imageBytes;
-  File? _tempPdfFile;
+  bool _sharing = false;
   bool _loading = true;
   String? _error;
   bool _loadStarted = false;
@@ -47,16 +43,8 @@ class _DocumentViewerScreenState extends State<DocumentViewerScreen> {
       final bytes = await storage.readDecryptedBytes(widget.document.filePath);
       if (!mounted) return;
       if (_isPdf) {
-        final tempDir = await getTemporaryDirectory();
-        _tempPdfFile = File(
-          p.join(
-            tempDir.path,
-            'vault_view_${widget.document.id}_${DateTime.now().millisecondsSinceEpoch}.pdf',
-          ),
-        );
-        await _tempPdfFile!.writeAsBytes(bytes, flush: true);
         _pdfController = PdfControllerPinch(
-          document: PdfDocument.openFile(_tempPdfFile!.path),
+          document: PdfDocument.openData(bytes),
         );
       } else {
         _imageBytes = bytes;
@@ -72,37 +60,41 @@ class _DocumentViewerScreenState extends State<DocumentViewerScreen> {
   @override
   void dispose() {
     _pdfController?.dispose();
-    try {
-      _tempPdfFile?.deleteSync();
-    } catch (_) {}
     super.dispose();
   }
 
   Future<void> _share() async {
-    final path = widget.document.filePath;
-    if (path.isEmpty) return;
-    if (!File(path).existsSync()) return;
-
+    if (_sharing) return;
     final storage = context.read<EncryptedFileStorageService>();
-    final bytes = await storage.readDecryptedBytes(path);
-    final docTitle = widget.document.title.trim();
-    final ext = p.extension(path);
-    final shareExt = ext.isNotEmpty ? ext : (_isPdf ? '.pdf' : '.bin');
-    final tempDir = await getTemporaryDirectory();
-    final safeTitle = docTitle.isEmpty
-        ? 'document'
-        : docTitle.replaceAll(RegExp(r'[^a-zA-Z0-9_.-]'), '_');
-    final newPath = p.join(tempDir.path, '$safeTitle$shareExt');
-    final outFile = File(newPath);
-    await outFile.writeAsBytes(bytes, flush: true);
-
-    if (!mounted) return;
-    await Share.shareXFiles(
-      [XFile(outFile.path)],
-      text: docTitle.isEmpty ? null : docTitle,
+    final exporter = context.read<DocumentExportService>();
+    final confirmed = await showDialog<bool>(
+      context: context, useRootNavigator: false,
+      builder: (context) => AlertDialog(
+        title: const Text('Export document?'),
+        content: const Text('This shares a decrypted copy outside your vault. The receiving app can keep its own copy.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
+          FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('Export')),
+        ],
+      ),
     );
+    if (confirmed != true || !mounted) return;
+    setState(() => _sharing = true);
+    try {
+      await exporter.exportDocumentsViaShare(
+        documents: [widget.document], storage: storage,
+        message: widget.document.title,
+        sharePositionOrigin: Rect.fromLTWH(0, 0, MediaQuery.sizeOf(context).width, 1),
+      );
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('Could not export. Unlock the vault and try again.')));
+      }
+    } finally {
+      if (mounted) setState(() => _sharing = false);
+    }
   }
-
   @override
   Widget build(BuildContext context) {
     final title = widget.document.title;
@@ -117,7 +109,7 @@ class _DocumentViewerScreenState extends State<DocumentViewerScreen> {
           IconButton(
             icon: const Icon(Icons.share_rounded),
             tooltip: 'Share',
-            onPressed: _loading || _error != null ? null : () => _share(),
+            onPressed: _loading || _sharing || _error != null ? null : () => _share(),
           ),
         ],
       ),
@@ -151,9 +143,7 @@ class _DocumentViewerScreenState extends State<DocumentViewerScreen> {
 
     return PdfViewPinch(
       controller: controller,
-      backgroundDecoration: const BoxDecoration(
-        color: Colors.black,
-      ),
+      backgroundDecoration: const BoxDecoration(color: Colors.black),
     );
   }
 
@@ -176,3 +166,4 @@ class _DocumentViewerScreenState extends State<DocumentViewerScreen> {
     );
   }
 }
+

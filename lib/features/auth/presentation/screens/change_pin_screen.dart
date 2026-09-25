@@ -90,6 +90,7 @@ class _ChangePinScreenState extends State<ChangePinScreen> {
                 const SizedBox(height: 12),
                 TextField(
                   controller: _newController,
+                  maxLength: 8,
                   obscureText: _obscure,
                   keyboardType: TextInputType.number,
                   decoration: const InputDecoration(
@@ -99,6 +100,7 @@ class _ChangePinScreenState extends State<ChangePinScreen> {
                 const SizedBox(height: 12),
                 TextField(
                   controller: _confirmController,
+                  maxLength: 8,
                   obscureText: _obscure,
                   keyboardType: TextInputType.number,
                   onSubmitted: (_) => _save(),
