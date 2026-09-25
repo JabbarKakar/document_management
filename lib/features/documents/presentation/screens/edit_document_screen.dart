@@ -6,6 +6,7 @@ import '../../domain/entities/vault_document.dart';
 import '../providers/document_list_provider.dart';
 import '../../../categories/presentation/providers/category_list_provider.dart';
 import '../../../categories/domain/entities/vault_category.dart';
+import 'camera_scanner_screen.dart';
 
 class EditDocumentScreen extends StatefulWidget {
   const EditDocumentScreen({super.key, this.existing});
@@ -279,6 +280,21 @@ class _EditDocumentScreenState extends State<EditDocumentScreen> {
                       const SizedBox(height: 10),
                       OutlinedButton.icon(
                         onPressed: () async {
+                          final result = await Navigator.of(context).push<PickedDocumentFile>(
+                            MaterialPageRoute<PickedDocumentFile>(
+                              builder: (_) => const CameraScannerScreen(),
+                            ),
+                          );
+                          if (result != null) {
+                            setState(() => _pickedFile = result);
+                          }
+                        },
+                        icon: const Icon(Icons.document_scanner_outlined),
+                        label: const Text('Replace by scanner'),
+                      ),
+                      const SizedBox(height: 10),
+                      OutlinedButton.icon(
+                        onPressed: () async {
                           final result = await _picker.pickPdf();
                           if (result != null) {
                             setState(() => _pickedFile = result);
@@ -366,6 +382,21 @@ class _EditDocumentScreenState extends State<EditDocumentScreen> {
                         ],
                       ),
                       const SizedBox(height: 10),
+                    OutlinedButton.icon(
+                      onPressed: () async {
+                        final result = await Navigator.of(context).push<PickedDocumentFile>(
+                          MaterialPageRoute<PickedDocumentFile>(
+                            builder: (_) => const CameraScannerScreen(),
+                          ),
+                        );
+                        if (result != null) {
+                          setState(() => _pickedFile = result);
+                        }
+                      },
+                      icon: const Icon(Icons.document_scanner_outlined),
+                      label: const Text('Scan document'),
+                    ),
+                    const SizedBox(height: 10),
                       OutlinedButton.icon(
                         onPressed: () async {
                           final result = await _picker.pickPdf();

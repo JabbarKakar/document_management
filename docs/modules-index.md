@@ -26,3 +26,15 @@ Structured milestones for the offline vault app. **Modules 1–9** are implement
 | 20 | Backup & restore | [module-20-backup-restore.md](module-20-backup-restore.md) |
 | 21 | Security hardening | [module-21-security-hardening.md](module-21-security-hardening.md) |
 | 22 | Expiry UX enhancements | [module-22-expiry-ux.md](module-22-expiry-ux.md) |
+| 23 | Data integrity checks | [module-23-data-integrity-checks.md](module-23-data-integrity-checks.md) |
+| 24 | Trash / soft delete | [module-24-trash-soft-delete.md](module-24-trash-soft-delete.md) |
+| 25 | Tagging system | [module-25-tagging-system.md](module-25-tagging-system.md) |
+| 26 | Smart folders | [module-26-smart-folders.md](module-26-smart-folders.md) |
+| 27 | Password-protected export package | [module-27-password-protected-export.md](module-27-password-protected-export.md) |
+| 28 | Audit timeline | [module-28-audit-timeline.md](module-28-audit-timeline.md) |
+| 29 | Camera scanner workflow | [module-29-camera-scanner-workflow.md](module-29-camera-scanner-workflow.md) |
+| 30 | Custom reminder rules | [module-30-custom-reminder-rules.md](module-30-custom-reminder-rules.md) |
+| 31 | Home dashboard widgets | [module-31-home-dashboard-widgets.md](module-31-home-dashboard-widgets.md) |
+| 32 | Local analytics | [module-32-local-analytics.md](module-32-local-analytics.md) |
+| 33 | Accessibility improvements | [module-33-accessibility-improvements.md](module-33-accessibility-improvements.md) |
+| 34 | Desktop productivity features | [module-34-desktop-productivity.md](module-34-desktop-productivity.md) |
