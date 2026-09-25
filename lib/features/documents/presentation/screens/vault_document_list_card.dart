@@ -8,6 +8,7 @@ import 'package:provider/provider.dart';
 
 import '../../../../core/services/document_thumbnail_cache_service.dart';
 import '../../../../core/services/encrypted_file_storage_service.dart';
+import '../../../../core/theme/app_tokens.dart';
 import '../../domain/entities/vault_document.dart';
 import '../../domain/expiry_calendar.dart';
 
@@ -102,17 +103,26 @@ IconData _fallbackIcon(VaultDocumentFileType t) {
 
 /// Leading thumbnail: decrypted image, first PDF page render, or type icon.
 class VaultDocumentThumbnail extends StatefulWidget {
-  const VaultDocumentThumbnail({super.key, required this.document});
+  const VaultDocumentThumbnail({
+    super.key,
+    required this.document,
+    this.size = 56,
+    this.height,
+    this.expandWidth = false,
+    this.borderRadius = 12,
+  });
 
   final VaultDocument document;
+  final double size;
+  final double? height;
+  final bool expandWidth;
+  final double borderRadius;
 
   @override
   State<VaultDocumentThumbnail> createState() => _VaultDocumentThumbnailState();
 }
 
 class _VaultDocumentThumbnailState extends State<VaultDocumentThumbnail> {
-  static const double _diameter = 56;
-
   bool _loading = true;
   Uint8List? _thumbBytes;
 
@@ -177,13 +187,15 @@ class _VaultDocumentThumbnailState extends State<VaultDocumentThumbnail> {
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
+    final thumbHeight = widget.height ?? widget.size;
 
     return SizedBox(
-      width: _diameter,
-      height: _diameter,
-      child: ClipOval(
-        child: Material(
-          color: scheme.primaryContainer.withValues(alpha: 0.9),
+      width: widget.expandWidth ? double.infinity : widget.size,
+      height: thumbHeight,
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(widget.borderRadius),
+        child: ColoredBox(
+          color: scheme.primaryContainer,
           child: _buildInner(scheme),
         ),
       ),
@@ -207,19 +219,21 @@ class _VaultDocumentThumbnailState extends State<VaultDocumentThumbnail> {
     final bytes = _thumbBytes;
     if (bytes != null && bytes.isNotEmpty) {
       final dpr = MediaQuery.devicePixelRatioOf(context);
-      final cacheW = (_diameter * dpr).round();
-      return Image.memory(
+      final cacheW = ((widget.height ?? widget.size) * dpr).round();
+      final image = Image.memory(
         bytes,
         fit: BoxFit.cover,
-        width: _diameter,
-        height: _diameter,
+        width: widget.expandWidth ? null : widget.size,
+        height: widget.expandWidth ? null : (widget.height ?? widget.size),
         gaplessPlayback: true,
         cacheWidth: cacheW,
         errorBuilder: (_, _, _) => _iconFallback(scheme),
       );
+      if (widget.expandWidth) return SizedBox.expand(child: image);
+      return image;
     }
 
-    return _iconFallback(scheme);
+    return Center(child: _iconFallback(scheme));
   }
 
   Widget _iconFallback(ColorScheme scheme) {
@@ -231,7 +245,9 @@ class _VaultDocumentThumbnailState extends State<VaultDocumentThumbnail> {
   }
 }
 
-/// List card for a vault document: open viewer, edit metadata, delete.
+enum VaultDocumentCardLayout { list, grid }
+
+/// List or grid card for a vault document: open viewer, edit metadata, delete.
 class VaultDocumentListCard extends StatelessWidget {
   const VaultDocumentListCard({
     super.key,
@@ -244,6 +260,8 @@ class VaultDocumentListCard extends StatelessWidget {
     this.selected = false,
     this.onToggleSelected,
     this.onLongPress,
+    this.categoryName,
+    this.layout = VaultDocumentCardLayout.list,
   });
 
   final VaultDocument document;
@@ -255,128 +273,274 @@ class VaultDocumentListCard extends StatelessWidget {
   final bool selected;
   final VoidCallback? onToggleSelected;
   final VoidCallback? onLongPress;
+  final String? categoryName;
+  final VaultDocumentCardLayout layout;
 
-  static String _formatExpiry(DateTime d) {
+  static const _months = [
+    'Jan',
+    'Feb',
+    'Mar',
+    'Apr',
+    'May',
+    'Jun',
+    'Jul',
+    'Aug',
+    'Sep',
+    'Oct',
+    'Nov',
+    'Dec',
+  ];
+
+  static String formatDate(DateTime d) {
     final local = d.toLocal();
-    final y = local.year.toString().padLeft(4, '0');
-    final mo = local.month.toString().padLeft(2, '0');
-    final day = local.day.toString().padLeft(2, '0');
-    return '$y-$mo-$day';
+    return '${local.day} ${_months[local.month - 1]} ${local.year}';
   }
+
+  static String typeLabel(VaultDocumentFileType type) => switch (type) {
+    VaultDocumentFileType.image => 'Image',
+    VaultDocumentFileType.pdf => 'PDF',
+    VaultDocumentFileType.other => 'File',
+  };
 
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
+    final radius = AppRadius.cardBorder;
+
+    return AnimatedContainer(
+      duration: AppMotion.fast,
+      curve: AppMotion.curve,
+      decoration: BoxDecoration(
+        color: selected ? scheme.primaryContainer : scheme.surface,
+        borderRadius: radius,
+        border: Border.all(
+          color: selected ? scheme.primary : scheme.outlineVariant,
+          width: selected ? 1.5 : 1,
+        ),
+        boxShadow: selected ? null : AppColors.cardShadow(scheme.brightness),
+      ),
+      child: Material(
+        type: MaterialType.transparency,
+        borderRadius: radius,
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          onTap: onOpen,
+          onLongPress: onLongPress,
+          borderRadius: radius,
+          child: layout == VaultDocumentCardLayout.grid
+              ? _gridBody(context)
+              : _listBody(context),
+        ),
+      ),
+    );
+  }
+
+  Widget _listBody(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(
+        AppSpacing.sm,
+        AppSpacing.xs,
+        AppSpacing.xxs,
+        AppSpacing.xs,
+      ),
+      child: Row(
+        children: [
+          VaultDocumentThumbnail(
+            key: ValueKey<String>('${document.id}|${document.filePath}'),
+            document: document,
+            borderRadius: AppRadius.chip,
+          ),
+          const SizedBox(width: AppSpacing.sm),
+          Expanded(child: _metaColumn(context)),
+          _trailing(context),
+        ],
+      ),
+    );
+  }
+
+  Widget _gridBody(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Stack(
+          children: [
+            VaultDocumentThumbnail(
+              key: ValueKey<String>('${document.id}|${document.filePath}'),
+              document: document,
+              height: 112,
+              expandWidth: true,
+              borderRadius: 0,
+            ),
+            if (selectionMode)
+              Positioned(top: 0, right: 0, child: _selectionBox()),
+          ],
+        ),
+        Expanded(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(
+              AppSpacing.sm,
+              AppSpacing.sm,
+              AppSpacing.xxs,
+              AppSpacing.xxs,
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _metaColumn(context),
+                const Spacer(),
+                if (!selectionMode)
+                  Align(
+                    alignment: Alignment.centerRight,
+                    child: _actionsMenu(context),
+                  ),
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _metaColumn(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
     final textTheme = Theme.of(context).textTheme;
     final expiry = document.expiryDate;
     final expiryUrgent = expiry != null && isExpiryUrgentRed(expiry);
-    final expiryColor = expiryUrgent ? scheme.error : scheme.onSurfaceVariant;
-    final expiryIconColor = expiryUrgent
+    final expiryColor = expiryUrgent
         ? scheme.error
-        : scheme.onSurfaceVariant.withValues(alpha: 0.9);
+        : AppColors.warning(scheme.brightness);
+    final meta = textTheme.labelMedium;
 
-    return Card(
-      clipBehavior: Clip.antiAlias,
-      child: ListTile(
-        onTap: onOpen,
-        onLongPress: onLongPress,
-        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-        leading: VaultDocumentThumbnail(
-          key: ValueKey<String>('${document.id}|${document.filePath}'),
-          document: document,
-        ),
-        title: Text(
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
           document.title,
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
+          style: textTheme.titleMedium,
         ),
-        subtitle: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+        const SizedBox(height: AppSpacing.xxs),
+        Wrap(
+          spacing: AppSpacing.xs,
+          runSpacing: AppSpacing.xxs,
+          crossAxisAlignment: WrapCrossAlignment.center,
           children: [
-            Text(
-              document.fileType.name.toUpperCase(),
-              style: textTheme.labelSmall?.copyWith(
-                letterSpacing: 0.08,
-                color: scheme.onSurfaceVariant,
+            _TypeBadge(label: typeLabel(document.fileType)),
+            if (categoryName != null)
+              Text(
+                categoryName!,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: meta,
               ),
-            ),
-            if (expiry != null) ...[
-              const SizedBox(height: 4),
-              Row(
-                children: [
-                  Icon(Icons.event_rounded, size: 14, color: expiryIconColor),
-                  const SizedBox(width: 4),
-                  Expanded(
-                    child: Text(
-                      'Expires ${_formatExpiry(expiry)}',
-                      style: textTheme.labelSmall?.copyWith(
-                        letterSpacing: 0.04,
-                        color: expiryColor,
-                      ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ),
-                ],
-              ),
-            ],
+            Text(formatDate(document.createdAt), style: meta),
           ],
         ),
-        isThreeLine: expiry != null,
-        trailing: selectionMode
-            ? Checkbox(
-                value: selected,
-                onChanged: (_) => onToggleSelected?.call(),
-              )
-            : PopupMenuButton<_CardAction>(
-                tooltip: 'Actions',
-                icon: Icon(
-                  Icons.more_vert_rounded,
-                  color: scheme.onSurfaceVariant.withValues(alpha: 0.92),
+        if (expiry != null) ...[
+          const SizedBox(height: AppSpacing.xxs),
+          Row(
+            children: [
+              Icon(Icons.event_outlined, size: 14, color: expiryColor),
+              const SizedBox(width: AppSpacing.xxs),
+              Expanded(
+                child: Text(
+                  'Expires ${formatDate(expiry)}',
+                  style: textTheme.labelMedium?.copyWith(color: expiryColor),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                 ),
-                onSelected: (action) {
-                  switch (action) {
-                    case _CardAction.details:
-                      onDetails?.call();
-                    case _CardAction.edit:
-                      onEdit();
-                    case _CardAction.delete:
-                      onDelete();
-                  }
-                },
-                itemBuilder: (context) => [
-                  const PopupMenuItem<_CardAction>(
-                    value: _CardAction.details,
-                    child: ListTile(
-                      contentPadding: EdgeInsets.zero,
-                      leading: Icon(Icons.info_outline_rounded),
-                      title: Text('Details'),
-                    ),
-                  ),
-                  const PopupMenuItem<_CardAction>(
-                    value: _CardAction.edit,
-                    child: ListTile(
-                      contentPadding: EdgeInsets.zero,
-                      leading: Icon(Icons.edit_outlined),
-                      title: Text('Edit'),
-                    ),
-                  ),
-                  PopupMenuItem<_CardAction>(
-                    value: _CardAction.delete,
-                    child: ListTile(
-                      contentPadding: EdgeInsets.zero,
-                      leading: Icon(
-                        Icons.delete_outline_rounded,
-                        color: scheme.error.withValues(alpha: 0.95),
-                      ),
-                      title: Text(
-                        'Delete',
-                        style: TextStyle(color: scheme.error),
-                      ),
-                    ),
-                  ),
-                ],
               ),
+            ],
+          ),
+        ],
+      ],
+    );
+  }
+
+  Widget _trailing(BuildContext context) {
+    if (selectionMode) return _selectionBox();
+    return _actionsMenu(context);
+  }
+
+  Widget _selectionBox() {
+    return Checkbox(
+      value: selected,
+      onChanged: (_) => onToggleSelected?.call(),
+    );
+  }
+
+  Widget _actionsMenu(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return PopupMenuButton<_CardAction>(
+      tooltip: 'Actions',
+      icon: Icon(
+        Icons.more_vert_rounded,
+        size: 22,
+        color: scheme.onSurfaceVariant,
+      ),
+      onSelected: (action) {
+        switch (action) {
+          case _CardAction.details:
+            onDetails?.call();
+          case _CardAction.edit:
+            onEdit();
+          case _CardAction.delete:
+            onDelete();
+        }
+      },
+      itemBuilder: (context) => [
+        const PopupMenuItem<_CardAction>(
+          value: _CardAction.details,
+          child: ListTile(
+            contentPadding: EdgeInsets.zero,
+            leading: Icon(Icons.info_outline_rounded),
+            title: Text('Details'),
+          ),
+        ),
+        const PopupMenuItem<_CardAction>(
+          value: _CardAction.edit,
+          child: ListTile(
+            contentPadding: EdgeInsets.zero,
+            leading: Icon(Icons.edit_outlined),
+            title: Text('Edit'),
+          ),
+        ),
+        PopupMenuItem<_CardAction>(
+          value: _CardAction.delete,
+          child: ListTile(
+            contentPadding: EdgeInsets.zero,
+            leading: Icon(Icons.delete_outline_rounded, color: scheme.error),
+            title: Text('Delete', style: TextStyle(color: scheme.error)),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _TypeBadge extends StatelessWidget {
+  const _TypeBadge({required this.label});
+
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: scheme.primaryContainer,
+        borderRadius: BorderRadius.circular(AppRadius.chip),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+        child: Text(
+          label,
+          style: Theme.of(context).textTheme.labelSmall?.copyWith(
+            color: scheme.onPrimaryContainer,
+            letterSpacing: 0.2,
+          ),
+        ),
       ),
     );
   }

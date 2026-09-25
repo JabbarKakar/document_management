@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import 'package:share_plus/share_plus.dart';
 
 import '../../../../core/providers/theme_controller.dart';
+import '../../../../core/theme/app_tokens.dart';
 import '../../../../core/services/document_export_service.dart';
 import '../../../../core/services/encrypted_file_storage_service.dart';
 import '../../../../core/services/expiry_reminder_service.dart';
@@ -10,13 +11,15 @@ import '../../../../core/services/secure_storage_service.dart';
 import '../../../auth/presentation/providers/auth_state_provider.dart';
 import '../../../categories/domain/entities/vault_category.dart';
 import '../../../categories/presentation/providers/category_list_provider.dart';
+import '../../../categories/presentation/screens/category_management_screen.dart';
 import '../../../settings/presentation/screens/settings_screen.dart';
 import '../../data/services/document_file_picker.dart';
 import '../../domain/entities/vault_document.dart';
-import '../../domain/vault_document_sort.dart';
+import '../../domain/expiry_calendar.dart';
 import '../providers/document_list_provider.dart';
 import '../widgets/document_details_sheet.dart';
 import '../widgets/document_filters_sheet.dart';
+import '../widgets/vault_home_widgets.dart';
 import 'document_viewer_screen.dart';
 import 'edit_document_screen.dart';
 import 'vault_document_list_card.dart';
@@ -33,7 +36,11 @@ class _DocumentsHomeScreenState extends State<DocumentsHomeScreen> {
   final Set<int> _selectedIds = <int>{};
   bool _isExporting = false;
   bool _isImporting = false;
+  bool _gridView = false;
+  bool _railExtended = true;
   final _picker = DocumentFilePicker();
+
+  static const int _expiringWindowDays = 30;
 
   bool get _selectionMode => _selectedIds.isNotEmpty;
 
@@ -154,13 +161,19 @@ class _DocumentsHomeScreenState extends State<DocumentsHomeScreen> {
         documents: docs,
         storage: storage,
         message: docs.length == 1 ? docs.first.title.trim() : null,
-        sharePositionOrigin: Rect.fromLTWH(0, 0, MediaQuery.sizeOf(context).width, 1),
+        sharePositionOrigin: Rect.fromLTWH(
+          0,
+          0,
+          MediaQuery.sizeOf(context).width,
+          1,
+        ),
       );
       if (!mounted) return;
       messenger.showSnackBar(
         SnackBar(
           content: Text(
-            result.status == ShareResultStatus.dismissed ? 'Export cancelled.'
+            result.status == ShareResultStatus.dismissed
+                ? 'Export cancelled.'
                 : 'Prepared ${docs.length} document(s) for sharing.',
           ),
           duration: const Duration(seconds: 2),
@@ -426,6 +439,10 @@ class _DocumentsHomeScreenState extends State<DocumentsHomeScreen> {
             child: const Text('Cancel'),
           ),
           FilledButton(
+            style: FilledButton.styleFrom(
+              backgroundColor: Theme.of(context).colorScheme.error,
+              foregroundColor: Theme.of(context).colorScheme.onError,
+            ),
             onPressed: () => Navigator.of(context).pop(true),
             child: const Text('Delete'),
           ),
@@ -497,11 +514,81 @@ class _DocumentsHomeScreenState extends State<DocumentsHomeScreen> {
     _clearSelection();
   }
 
+  void _openAddDocument() {
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => MultiProvider(
+          providers: [
+            ChangeNotifierProvider.value(
+              value: context.read<DocumentListProvider>(),
+            ),
+            ChangeNotifierProvider.value(
+              value: context.read<CategoryListProvider>(),
+            ),
+          ],
+          child: const EditDocumentScreen(),
+        ),
+      ),
+    );
+  }
+
+  void _openCategories() {
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => ChangeNotifierProvider.value(
+          value: context.read<CategoryListProvider>(),
+          child: const CategoryManagementScreen(),
+        ),
+      ),
+    );
+  }
+
+  void _openSettings() {
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => MultiProvider(
+          providers: [
+            Provider.value(value: context.read<SecureStorageService>()),
+            Provider.value(value: context.read<ExpiryReminderService>()),
+            ChangeNotifierProvider.value(
+              value: context.read<AuthStateProvider>(),
+            ),
+            ChangeNotifierProvider.value(
+              value: context.read<CategoryListProvider>(),
+            ),
+            ChangeNotifierProvider.value(
+              value: context.read<ThemeController>(),
+            ),
+          ],
+          child: const SettingsScreen(),
+        ),
+      ),
+    );
+  }
+
+  String? _categoryName(int? id, List<VaultCategory> categories) {
+    if (id == null) return null;
+    for (final category in categories) {
+      if (category.id == id) return category.name;
+    }
+    return null;
+  }
+
+  int _expiringCount(List<VaultDocument> documents) {
+    var count = 0;
+    for (final document in documents) {
+      final expiry = document.expiryDate;
+      if (expiry == null) continue;
+      if (calendarDaysUntilExpiry(expiry) < _expiringWindowDays) count++;
+    }
+    return count;
+  }
+
   @override
   Widget build(BuildContext context) {
     final provider = context.watch<DocumentListProvider>();
+    final categories = context.watch<CategoryListProvider>().categories;
     final scheme = Theme.of(context).colorScheme;
-    final textTheme = Theme.of(context).textTheme;
     final visibleDocs = provider.documents;
     _syncSelectionWithVisible(visibleDocs);
     final selectedVisibleDocs = _selectedVisibleDocuments(visibleDocs);
@@ -509,333 +596,327 @@ class _DocumentsHomeScreenState extends State<DocumentsHomeScreen> {
         visibleDocs.isNotEmpty &&
         selectedVisibleDocs.length == visibleDocs.length;
 
-    return Scaffold(
-      body: CustomScrollView(
-        slivers: [
-          SliverAppBar.large(
-            pinned: true,
-            title: _selectionMode
-                ? Text('${selectedVisibleDocs.length} selected')
-                : const Text('Your vault'),
-            actions: [
-              if (_selectionMode) ...[
-                IconButton(
-                  tooltip: allVisibleSelected
-                      ? 'Clear selection'
-                      : 'Select all',
-                  icon: Icon(
-                    allVisibleSelected
-                        ? Icons.deselect_rounded
-                        : Icons.select_all_rounded,
-                  ),
-                  onPressed: () {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final wide = constraints.maxWidth >= AppBreakpoints.rail;
+        final railWidth = _railExtended ? 208.0 : 80.0;
+        final contentWidth = wide
+            ? constraints.maxWidth - railWidth
+            : constraints.maxWidth;
+        final columns = contentWidth >= AppBreakpoints.gridThree ? 3 : 2;
+        final textScaler = MediaQuery.textScalerOf(context);
+        final gridExtent = textScaler.scale(312);
+
+        return Scaffold(
+          extendBody: _selectionMode,
+          floatingActionButton: _selectionMode
+              ? null
+              : FloatingActionButton.extended(
+                  onPressed: _openAddDocument,
+                  icon: const Icon(Icons.add_rounded),
+                  label: const Text('Add document'),
+                ),
+          bottomNavigationBar: _selectionMode
+              ? VaultSelectionBar(
+                  count: selectedVisibleDocs.length,
+                  allSelected: allVisibleSelected,
+                  actionsEnabled: selectedVisibleDocs.isNotEmpty,
+                  exporting: _isExporting,
+                  onToggleSelectAll: () {
                     if (allVisibleSelected) {
                       _clearSelection();
                     } else {
                       _selectAllVisible(visibleDocs);
                     }
                   },
-                ),
-                IconButton(
-                  tooltip: 'Set category',
-                  icon: const Icon(Icons.label_outline_rounded),
-                  onPressed: selectedVisibleDocs.isEmpty
-                      ? null
-                      : () => _openBatchCategorySheet(selectedVisibleDocs),
-                ),
-                IconButton(
-                  tooltip: _isExporting ? 'Exporting...' : 'Export selected',
-                  icon: const Icon(Icons.ios_share_rounded),
-                  onPressed: selectedVisibleDocs.isEmpty || _isExporting
-                      ? null
-                      : () => _exportDocuments(selectedVisibleDocs),
-                ),
-                IconButton(
-                  tooltip: 'Delete selected',
-                  icon: Icon(
-                    Icons.delete_outline_rounded,
-                    color: scheme.error.withValues(alpha: 0.9),
+                  onCategory: () =>
+                      _openBatchCategorySheet(selectedVisibleDocs),
+                  onExport: () => _exportDocuments(selectedVisibleDocs),
+                  onDelete: () => _confirmBatchDelete(selectedVisibleDocs),
+                  onClose: _clearSelection,
+                )
+              : null,
+          body: SafeArea(
+            bottom: !_selectionMode,
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                if (wide)
+                  VaultHomeRail(
+                    extended: _railExtended,
+                    onToggleExtended: () =>
+                        setState(() => _railExtended = !_railExtended),
+                    onCategories: _openCategories,
+                    onSettings: _openSettings,
                   ),
-                  onPressed: selectedVisibleDocs.isEmpty
-                      ? null
-                      : () => _confirmBatchDelete(selectedVisibleDocs),
-                ),
-                IconButton(
-                  tooltip: 'Close selection',
-                  icon: const Icon(Icons.close_rounded),
-                  onPressed: _clearSelection,
-                ),
-              ] else ...[
-                PopupMenuButton<VaultDocumentSort>(
-                  tooltip: 'Sort',
-                  icon: const Icon(Icons.sort_rounded),
-                  initialValue: provider.sortMode,
-                  onSelected: (VaultDocumentSort mode) {
-                    context.read<DocumentListProvider>().setSortMode(mode);
-                  },
-                  itemBuilder: (context) => [
-                    for (final s in VaultDocumentSort.values)
-                      PopupMenuItem<VaultDocumentSort>(
-                        value: s,
-                        child: Row(
-                          children: [
-                            SizedBox(
-                              width: 28,
-                              child: s == provider.sortMode
-                                  ? Icon(
-                                      Icons.check_rounded,
-                                      size: 20,
+                Expanded(
+                  child: CustomScrollView(
+                    slivers: [
+                      SliverPadding(
+                        padding: const EdgeInsets.fromLTRB(
+                          AppSpacing.lg,
+                          AppSpacing.sm,
+                          AppSpacing.lg,
+                          0,
+                        ),
+                        sliver: SliverToBoxAdapter(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              Row(
+                                children: [
+                                  Expanded(
+                                    child: Text(
+                                      'Vault',
+                                      style: Theme.of(
+                                        context,
+                                      ).textTheme.headlineMedium,
+                                    ),
+                                  ),
+                                  IconButton(
+                                    tooltip: 'Lock vault',
+                                    onPressed: () => context
+                                        .read<AuthStateProvider>()
+                                        .lock(),
+                                    icon: const Icon(
+                                      Icons.lock_outline_rounded,
+                                      size: 22,
+                                    ),
+                                  ),
+                                  if (!wide)
+                                    IconButton(
+                                      tooltip: 'Settings',
+                                      onPressed: _openSettings,
+                                      icon: const Icon(
+                                        Icons.settings_outlined,
+                                        size: 22,
+                                      ),
+                                    ),
+                                ],
+                              ),
+                              const SizedBox(height: AppSpacing.md),
+                              VaultSearchField(
+                                controller: _searchController,
+                                onChanged: (value) => context
+                                    .read<DocumentListProvider>()
+                                    .setSearchQuery(value),
+                              ),
+                              const SizedBox(height: AppSpacing.md),
+                              VaultPulseRow(
+                                documents: visibleDocs.length,
+                                expiring: _expiringCount(visibleDocs),
+                                categories: categories.length,
+                              ),
+                              const SizedBox(height: AppSpacing.sm),
+                              VaultBrowserToolbar(
+                                grid: _gridView,
+                                onViewMode: (grid) =>
+                                    setState(() => _gridView = grid),
+                                sortMode: provider.sortMode,
+                                onSort: (mode) => context
+                                    .read<DocumentListProvider>()
+                                    .setSortMode(mode),
+                                filtersActive: provider.hasStructuredFilters,
+                                onFilters: () =>
+                                    showDocumentFiltersSheet(context),
+                                importing: _isImporting,
+                                onImport: _isImporting
+                                    ? null
+                                    : _startBulkImport,
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                      if (provider.errorMessage != null)
+                        SliverToBoxAdapter(
+                          child: Padding(
+                            padding: const EdgeInsets.fromLTRB(
+                              AppSpacing.lg,
+                              AppSpacing.sm,
+                              AppSpacing.lg,
+                              0,
+                            ),
+                            child: Semantics(
+                              liveRegion: true,
+                              child: DecoratedBox(
+                                decoration: BoxDecoration(
+                                  color: scheme.errorContainer,
+                                  borderRadius: AppRadius.cardBorder,
+                                ),
+                                child: Padding(
+                                  padding: const EdgeInsets.all(AppSpacing.sm),
+                                  child: Text(
+                                    provider.errorMessage!,
+                                    style: Theme.of(context).textTheme.bodySmall
+                                        ?.copyWith(
+                                          color: scheme.onErrorContainer,
+                                        ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      if (!_selectionMode && provider.hasActiveListFilters)
+                        SliverToBoxAdapter(
+                          child: Padding(
+                            padding: const EdgeInsets.fromLTRB(
+                              AppSpacing.lg,
+                              AppSpacing.sm,
+                              AppSpacing.lg,
+                              0,
+                            ),
+                            child: Wrap(
+                              spacing: AppSpacing.xs,
+                              runSpacing: AppSpacing.xs,
+                              crossAxisAlignment: WrapCrossAlignment.center,
+                              children: [
+                                if (provider.searchQuery.isNotEmpty)
+                                  _FilterSummaryChip(
+                                    label:
+                                        '“${provider.searchQuery.length > 28 ? '${provider.searchQuery.substring(0, 28)}…' : provider.searchQuery}”',
+                                    onDelete: () {
+                                      _searchController.clear();
+                                      context
+                                          .read<DocumentListProvider>()
+                                          .setSearchQuery('');
+                                    },
+                                  ),
+                                if (provider.hasStructuredFilters)
+                                  ActionChip(
+                                    avatar: Icon(
+                                      Icons.tune_rounded,
+                                      size: 18,
                                       color: scheme.primary,
-                                    )
-                                  : null,
+                                    ),
+                                    label: const Text('Edit filters'),
+                                    onPressed: () =>
+                                        showDocumentFiltersSheet(context),
+                                  ),
+                                TextButton(
+                                  onPressed: _clearAllListFilters,
+                                  child: const Text('Clear all'),
+                                ),
+                              ],
                             ),
-                            Text(s.menuLabel),
-                          ],
+                          ),
                         ),
-                      ),
-                  ],
-                ),
-                IconButton(
-                  tooltip: 'Filters',
-                  onPressed: () => showDocumentFiltersSheet(context),
-                  icon: Badge(
-                    isLabelVisible: provider.hasStructuredFilters,
-                    padding: const EdgeInsets.symmetric(horizontal: 5),
-                    backgroundColor: scheme.primary,
-                    child: const Icon(Icons.tune_rounded),
-                  ),
-                ),
-                IconButton(
-                  tooltip: _isImporting ? 'Importing...' : 'Import files',
-                  icon: const Icon(Icons.file_upload_outlined),
-                  onPressed: _isImporting ? null : _startBulkImport,
-                ),
-                IconButton(
-                  icon: const Icon(Icons.settings_outlined),
-                  tooltip: 'Settings',
-                  onPressed: () {
-                    Navigator.of(context).push(
-                      MaterialPageRoute<void>(
-                        builder: (_) => MultiProvider(
-                          providers: [
-                            Provider.value(
-                              value: context.read<SecureStorageService>(),
+                      if (provider.isLoading && provider.documents.isEmpty)
+                        SliverPadding(
+                          padding: const EdgeInsets.fromLTRB(
+                            AppSpacing.lg,
+                            AppSpacing.md,
+                            AppSpacing.lg,
+                            AppSpacing.lg,
+                          ),
+                          sliver: SliverToBoxAdapter(
+                            child: VaultListSkeleton(
+                              grid: _gridView,
+                              columns: columns,
                             ),
-                            Provider.value(
-                              value: context.read<ExpiryReminderService>(),
-                            ),
-                            ChangeNotifierProvider.value(
-                              value: context.read<AuthStateProvider>(),
-                            ),
-                            ChangeNotifierProvider.value(
-                              value: context.read<CategoryListProvider>(),
-                            ),
-                            ChangeNotifierProvider.value(
-                              value: context.read<ThemeController>(),
-                            ),
-                          ],
-                          child: const SettingsScreen(),
+                          ),
+                        )
+                      else if (provider.documents.isEmpty)
+                        SliverFillRemaining(
+                          hasScrollBody: false,
+                          child: VaultEmptyState(
+                            filtered: provider.hasActiveListFilters,
+                            onClear: _clearAllListFilters,
+                            onAdd: _openAddDocument,
+                          ),
+                        )
+                      else
+                        SliverPadding(
+                          padding: EdgeInsets.fromLTRB(
+                            AppSpacing.lg,
+                            AppSpacing.md,
+                            AppSpacing.lg,
+                            _selectionMode ? 112 : 120,
+                          ),
+                          sliver: _gridView
+                              ? SliverGrid(
+                                  gridDelegate:
+                                      SliverGridDelegateWithFixedCrossAxisCount(
+                                        crossAxisCount: columns,
+                                        mainAxisSpacing: AppSpacing.sm,
+                                        crossAxisSpacing: AppSpacing.sm,
+                                        mainAxisExtent: gridExtent,
+                                      ),
+                                  delegate: SliverChildBuilderDelegate((
+                                    context,
+                                    index,
+                                  ) {
+                                    return _documentCard(
+                                      visibleDocs[index],
+                                      categories,
+                                      layout: VaultDocumentCardLayout.grid,
+                                    );
+                                  }, childCount: visibleDocs.length),
+                                )
+                              : SliverList.separated(
+                                  itemCount: visibleDocs.length,
+                                  separatorBuilder: (context, index) =>
+                                      const SizedBox(height: AppSpacing.sm),
+                                  itemBuilder: (context, index) {
+                                    return _documentCard(
+                                      visibleDocs[index],
+                                      categories,
+                                    );
+                                  },
+                                ),
                         ),
-                      ),
-                    );
-                  },
-                ),
-                IconButton(
-                  icon: const Icon(Icons.lock_person_outlined),
-                  tooltip: 'Lock vault',
-                  onPressed: () => context.read<AuthStateProvider>().lock(),
-                ),
-              ],
-            ],
-          ),
-          SliverPadding(
-            padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
-            sliver: SliverToBoxAdapter(
-              child: TextField(
-                controller: _searchController,
-                onChanged: (v) =>
-                    context.read<DocumentListProvider>().setSearchQuery(v),
-                decoration: InputDecoration(
-                  hintText: 'Search title or notes…',
-                  prefixIcon: Icon(Icons.search_rounded, color: scheme.primary),
-                ),
-              ),
-            ),
-          ),
-          if (provider.errorMessage != null)
-            SliverToBoxAdapter(
-              child: Padding(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 20,
-                  vertical: 8,
-                ),
-                child: Semantics(
-                  liveRegion: true,
-                  child: Text(provider.errorMessage!),
-                ),
-              ),
-            ),
-          if (!_selectionMode && provider.hasActiveListFilters)
-            SliverToBoxAdapter(
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
-                child: Wrap(
-                  spacing: 8,
-                  runSpacing: 6,
-                  crossAxisAlignment: WrapCrossAlignment.center,
-                  children: [
-                    if (provider.searchQuery.isNotEmpty)
-                      _FilterSummaryChip(
-                        label:
-                            '“${provider.searchQuery.length > 28 ? '${provider.searchQuery.substring(0, 28)}…' : provider.searchQuery}”',
-                        onDelete: () {
-                          _searchController.clear();
-                          context.read<DocumentListProvider>().setSearchQuery(
-                            '',
-                          );
-                        },
-                      ),
-                    if (provider.hasStructuredFilters)
-                      ActionChip(
-                        avatar: Icon(
-                          Icons.tune_rounded,
-                          size: 18,
-                          color: scheme.primary,
-                        ),
-                        label: const Text('Edit filters'),
-                        onPressed: () => showDocumentFiltersSheet(context),
-                      ),
-                    TextButton(
-                      onPressed: _clearAllListFilters,
-                      child: const Text('Clear all'),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          if (provider.isLoading && provider.documents.isEmpty)
-            const SliverFillRemaining(
-              child: Center(child: CircularProgressIndicator()),
-            )
-          else if (provider.documents.isEmpty)
-            SliverFillRemaining(
-              hasScrollBody: false,
-              child: Center(
-                child: Padding(
-                  padding: const EdgeInsets.all(40),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(
-                        provider.hasActiveListFilters
-                            ? Icons.search_off_rounded
-                            : Icons.folder_special_outlined,
-                        size: 72,
-                        color: scheme.primary.withValues(alpha: 0.55),
-                      ),
-                      const SizedBox(height: 20),
-                      Text(
-                        provider.hasActiveListFilters
-                            ? 'No matching documents'
-                            : 'No documents yet',
-                        style: textTheme.headlineSmall,
-                      ),
-                      const SizedBox(height: 10),
-                      Text(
-                        provider.hasActiveListFilters
-                            ? 'Try different search words or filters.'
-                            : 'Add images, scans, or PDFs. Everything stays encrypted on this device.',
-                        textAlign: TextAlign.center,
-                        style: textTheme.bodyMedium?.copyWith(
-                          color: scheme.onSurfaceVariant,
-                        ),
-                      ),
-                      if (provider.hasActiveListFilters) ...[
-                        const SizedBox(height: 20),
-                        FilledButton.tonalIcon(
-                          onPressed: _clearAllListFilters,
-                          icon: const Icon(Icons.filter_alt_off_rounded),
-                          label: const Text('Clear all'),
-                        ),
-                      ],
                     ],
                   ),
                 ),
-              ),
-            )
-          else
-            SliverPadding(
-              padding: const EdgeInsets.fromLTRB(20, 8, 20, 120),
-              sliver: SliverList.separated(
-                itemCount: visibleDocs.length,
-                separatorBuilder: (context, index) =>
-                    const SizedBox(height: 10),
-                itemBuilder: (context, index) {
-                  final doc = visibleDocs[index];
-                  final isSelected = _selectedIds.contains(doc.id);
-                  return VaultDocumentListCard(
-                    document: doc,
-                    onOpen: () {
-                      if (_selectionMode) {
-                        _toggleSelection(doc.id);
-                        return;
-                      }
-                      _openViewer(doc);
-                    },
-                    onEdit: () {
-                      if (_selectionMode) {
-                        _toggleSelection(doc.id);
-                        return;
-                      }
-                      _pushEditScreen(doc);
-                    },
-                    onDelete: () {
-                      if (_selectionMode) {
-                        _toggleSelection(doc.id);
-                        return;
-                      }
-                      _confirmBatchDelete([doc]);
-                    },
-                    onDetails: _selectionMode
-                        ? null
-                        : () => _openDetailsSheet(doc),
-                    selectionMode: _selectionMode,
-                    selected: isSelected,
-                    onToggleSelected: () => _toggleSelection(doc.id),
-                    onLongPress: () {
-                      if (!_selectionMode) {
-                        _toggleSelection(doc.id);
-                      }
-                    },
-                  );
-                },
-              ),
+              ],
             ),
-        ],
-      ),
-      floatingActionButton: _selectionMode
-          ? null
-          : FloatingActionButton.extended(
-              onPressed: () {
-                Navigator.of(context).push(
-                  MaterialPageRoute<void>(
-                    builder: (_) => MultiProvider(
-                      providers: [
-                        ChangeNotifierProvider.value(
-                          value: context.read<DocumentListProvider>(),
-                        ),
-                        ChangeNotifierProvider.value(
-                          value: context.read<CategoryListProvider>(),
-                        ),
-                      ],
-                      child: const EditDocumentScreen(),
-                    ),
-                  ),
-                );
-              },
-              icon: const Icon(Icons.add_rounded),
-              label: const Text('Add document'),
-            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _documentCard(
+    VaultDocument doc,
+    List<VaultCategory> categories, {
+    VaultDocumentCardLayout layout = VaultDocumentCardLayout.list,
+  }) {
+    final isSelected = _selectedIds.contains(doc.id);
+    return VaultDocumentListCard(
+      document: doc,
+      categoryName: _categoryName(doc.categoryId, categories),
+      layout: layout,
+      onOpen: () {
+        if (_selectionMode) {
+          _toggleSelection(doc.id);
+          return;
+        }
+        _openViewer(doc);
+      },
+      onEdit: () {
+        if (_selectionMode) {
+          _toggleSelection(doc.id);
+          return;
+        }
+        _pushEditScreen(doc);
+      },
+      onDelete: () {
+        if (_selectionMode) {
+          _toggleSelection(doc.id);
+          return;
+        }
+        _confirmBatchDelete([doc]);
+      },
+      onDetails: _selectionMode ? null : () => _openDetailsSheet(doc),
+      selectionMode: _selectionMode,
+      selected: isSelected,
+      onToggleSelected: () => _toggleSelection(doc.id),
+      onLongPress: () {
+        if (!_selectionMode) {
+          _toggleSelection(doc.id);
+        }
+      },
     );
   }
 }
