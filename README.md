@@ -3,7 +3,8 @@
 A personal, offline Flutter vault for **Android and iOS**. Documents are imported
 from files, camera, gallery, or the multi-page scanner. Search, categories,
 expiry reminders, image/PDF previews, bulk actions and file replacement are
-available. The Material 3 teal/sage design supports light and dark modes.
+available alongside tags, favorites, Trash, retained versions and offline OCR.
+The existing Material 3 teal design supports light and dark modes, with bundled fonts.
 
 ## Development
 
@@ -50,7 +51,7 @@ and restore from the same settings screen. Restore requires an empty vault and
 never overwrites an existing collection. It imports document contents and metadata
 under the new device's encryption key; device security preferences are not imported.
 
-The first recovery format supports **1,000 documents / 32 MiB of document content**
+Recovery packages support **1,000 documents / 32 MiB of document content**, including retained versions,
 and a maximum 48 MiB package. Missing/unreadable files fail backup creation.
 Passwords cannot be recovered by this app. Test a restore before relying on a backup.
 
@@ -58,20 +59,24 @@ Passwords cannot be recovered by this app. Test a restore before relying on a ba
 
 - Private notifications are the default. Titles can be enabled in settings;
   document images are never attached. Old notification artwork is cleaned up.
-- Export shares decrypted copies after confirmation. Local export staging is
+- Export offers a selected password-protected package or decrypted copies after confirmation. Local plaintext staging is
   cleaned after a 10-minute receiver grace period or on the next cold start.
   Copies kept by receiving apps are outside the vault's control.
 - Recovery packages use PBKDF2-HMAC-SHA256 (600,000 rounds), a random salt,
   AES-256-GCM and an authenticated version header. Password work runs off the UI isolate.
-- Existing document storage remains AES-CBC; authenticated file-format migration
-  and metadata-at-rest protection are follow-up work. Isar metadata is currently
-  not encrypted by the app.
-- Single and bulk permanent deletion require confirmation. Trash and version
-  history are **not implemented yet**; planned defaults are 30 days and 3 older
-  versions, respectively, subject to the user's preference.
+- New files use authenticated AES-256-GCM. **Settings → Vault health** upgrades
+  older files and encrypts existing titles, notes, tags, extracted text and activity.
+  Dates, category names and structural database metadata remain unencrypted.
+- Delete moves documents to **30-day Trash**. Replacement retains **three previous
+  files**. Restore and confirmed permanent deletion are available from Settings.
 - Database/file transaction safety prefers an unreferenced encrypted file over
-  a broken document. Failed cleanup/crash leftovers need the planned integrity
-  report and cleanup queue. No destructive automatic orphan purge is performed.
+  a broken document. Vault health verifies files and offers confirmed cleanup of
+  unused generated files older than 24 hours. No automatic orphan purge is performed.
+
+Open a document's details, then **Tags, reminders & history**, to organize it,
+extract searchable text, configure reminders or restore a prior file. OCR supports
+English/Latin images and PDFs up to 20 pages. Scanner pages can be cropped, rotated
+and reordered before export; previews show the selected enhancement.
 
 See [implementation and device QA](docs/security-recovery-implementation.md) and
-[the module index](docs/modules-index.md).
+[current status, limits and remaining work](docs/implementation-status.md).

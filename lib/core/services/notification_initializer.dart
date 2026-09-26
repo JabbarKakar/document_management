@@ -8,16 +8,16 @@ class NotificationInitializer {
   FlutterLocalNotificationsPlugin get plugin => _plugin;
 
   Future<void> initialize() async {
-    const androidSettings = AndroidInitializationSettings('@mipmap/ic_launcher');
+    const androidSettings = AndroidInitializationSettings(
+      '@mipmap/ic_launcher',
+    );
     const darwinSettings = DarwinInitializationSettings();
     const initializationSettings = InitializationSettings(
       android: androidSettings,
       iOS: darwinSettings,
     );
 
-    await _plugin.initialize(
-      settings: initializationSettings,
-    );
+    await _plugin.initialize(settings: initializationSettings);
 
     const androidChannel = AndroidNotificationChannel(
       'document_expiry_v2',
@@ -26,17 +26,19 @@ class NotificationInitializer {
       importance: Importance.high,
     );
 
-    final androidPlugin = _plugin.resolvePlatformSpecificImplementation<
-        AndroidFlutterLocalNotificationsPlugin>();
+    final androidPlugin = _plugin
+        .resolvePlatformSpecificImplementation<
+          AndroidFlutterLocalNotificationsPlugin
+        >();
     if (androidPlugin != null) {
       await androidPlugin.createNotificationChannel(androidChannel);
       await androidPlugin.requestNotificationsPermission();
-      await androidPlugin.requestExactAlarmsPermission();
     }
 
-    final ios = _plugin.resolvePlatformSpecificImplementation<
-        IOSFlutterLocalNotificationsPlugin>();
+    final ios = _plugin
+        .resolvePlatformSpecificImplementation<
+          IOSFlutterLocalNotificationsPlugin
+        >();
     await ios?.requestPermissions(alert: true, badge: true, sound: true);
   }
 }
-

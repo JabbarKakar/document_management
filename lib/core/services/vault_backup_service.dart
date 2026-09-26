@@ -33,21 +33,36 @@ class VaultBackupService {
       ? null
       : 'Use a recovery password of at least 12 characters.';
 
-  Future<Uint8List> create(String password) async {
+  Future<Uint8List> create(String password, {Set<int>? documentIds}) async {
     final error = validatePassword(password);
     if (error != null) throw FormatException(error);
     if (_busy) throw StateError('Another recovery operation is running.');
     _busy = true;
     try {
       storage.requireUnlocked?.call();
-      final documents = await isar
+      final allDocuments = await isar
           .collection<VaultDocumentModel>()
           .where()
           .findAll();
-      final categories = await isar
+      final documents = documentIds == null
+          ? allDocuments
+          : allDocuments
+                .where((d) => documentIds.contains(d.id) && d.deletedAt == null)
+                .toList();
+      if (documentIds != null &&
+          (documentIds.isEmpty || documents.length != documentIds.length)) {
+        throw const FormatException(
+          'Some selected documents are no longer available. Refresh and retry.',
+        );
+      }
+      final allCategories = await isar
           .collection<VaultCategoryModel>()
           .where()
           .findAll();
+      final usedCategories = documents.map((d) => d.categoryId).toSet();
+      final categories = documentIds == null
+          ? allCategories
+          : allCategories.where((c) => usedCategories.contains(c.id)).toList();
       if (documents.length > maxDocuments) {
         throw const FormatException(
           'This backup supports up to 1,000 documents.',
@@ -74,7 +89,10 @@ class VaultBackupService {
       for (final stored in documents) {
         final doc = await DocumentMetadataCodec(storage).decode(stored);
         final versions = <Map<String, Object?>>[];
-        for (final version in doc.versionRecords.map(DocumentVersion.decode)) {
+        for (final version
+            in (documentIds == null ? doc.versionRecords : <String>[]).map(
+              DocumentVersion.decode,
+            )) {
           versions.add({
             ...await content(version.path),
             'fileType': VaultDocumentFileType.values[version.typeIndex].name,
@@ -96,7 +114,7 @@ class VaultBackupService {
           'reminderOffsets': doc.reminderOffsets,
           'remindersDisabled': doc.remindersDisabled,
           'extractedText': doc.extractedText,
-          'activity': doc.activityRecords,
+          'activity': documentIds == null ? doc.activityRecords : <String>[],
           'versions': versions,
         });
       }

@@ -30,6 +30,24 @@ class ExpiryReminderService {
   final SecureStorageService _secureStorage;
   final DocumentMetadataCodec? metadataCodec;
 
+  Future<bool> requestPermissionAndSync() async {
+    final android = _plugin
+        .resolvePlatformSpecificImplementation<
+          AndroidFlutterLocalNotificationsPlugin
+        >();
+    final ios = _plugin
+        .resolvePlatformSpecificImplementation<
+          IOSFlutterLocalNotificationsPlugin
+        >();
+    final allowed = android != null
+        ? await android.requestNotificationsPermission()
+        : ios != null
+        ? await ios.requestPermissions(alert: true, badge: true, sound: true)
+        : false;
+    if (allowed == true) await syncAll();
+    return allowed == true;
+  }
+
   static const String _channelId = 'document_expiry_v2';
   static const List<int> _daysBefore = [30, 15, 7];
   static const int _hour = 9;
@@ -125,7 +143,7 @@ class ExpiryReminderService {
         id: notificationId(document.id, i),
         scheduledDate: scheduled,
         notificationDetails: notificationDetails,
-        androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
+        androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
         title: 'Document expiry reminder',
         body: body,
       );
@@ -167,7 +185,7 @@ class ExpiryReminderService {
         id: notificationId(document.id, 0),
         scheduledDate: morningOnExpiryDay,
         notificationDetails: notificationDetails,
-        androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
+        androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
         title: 'Document expiry reminder',
         body:
             'Reminder: $title expires on ${_formatDate(expiryDate)} (this morning’s date reminder).',
@@ -187,7 +205,7 @@ class ExpiryReminderService {
         id: notificationId(document.id, 0),
         scheduledDate: soon,
         notificationDetails: notificationDetails,
-        androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
+        androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
         title: 'Document expires today',
         body: '$title expires today (${_formatDate(expiryDate)}).',
       );
@@ -237,7 +255,9 @@ class ExpiryReminderService {
 
     await ensureLocalTimeZone();
     for (final m in models) {
-      final decoded = metadataCodec == null ? m : await metadataCodec!.decode(m);
+      final decoded = metadataCodec == null
+          ? m
+          : await metadataCodec!.decode(m);
       await rescheduleForDocument(decoded.toEntity());
     }
   }

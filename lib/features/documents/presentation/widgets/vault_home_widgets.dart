@@ -61,7 +61,7 @@ class _VaultSearchFieldState extends State<VaultSearchField> {
             style: textTheme.bodyMedium,
             textInputAction: TextInputAction.search,
             decoration: InputDecoration(
-              hintText: 'Search titles, notes or tags',
+              hintText: 'Search documents, tags or extracted text',
               filled: true,
               fillColor: AppColors.glassFill(scheme.brightness),
               prefixIcon: Icon(

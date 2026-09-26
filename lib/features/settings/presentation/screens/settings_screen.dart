@@ -154,6 +154,38 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ),
           ),
           const _SectionHeader('Reminders'),
+          ListTile(
+            leading: const Icon(Icons.notifications_active_outlined),
+            title: const Text('Check permission and retry reminders'),
+            onTap: () async {
+              try {
+                final allowed = await context
+                    .read<ExpiryReminderService>()
+                    .requestPermissionAndSync();
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text(
+                        allowed
+                            ? 'Notification permission is enabled. Reminder schedules refreshed.'
+                            : 'Notifications are disabled. Enable them in your device settings.',
+                      ),
+                    ),
+                  );
+                }
+              } catch (_) {
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text(
+                        'Could not refresh reminders. Please retry.',
+                      ),
+                    ),
+                  );
+                }
+              }
+            },
+          ),
           SwitchListTile(
             secondary: const Icon(Icons.notifications_outlined),
             title: const Text('Expiry reminders'),
@@ -191,9 +223,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
             },
           ),
           const _SectionHeader('Organization'),
-          ListTile(leading: const Icon(Icons.health_and_safety_outlined),
-            title: const Text('Vault health'), subtitle: const Text('Verify files and upgrade older encryption'),
-            onTap: () => Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => const VaultMaintenanceScreen()))),
+          ListTile(
+            leading: const Icon(Icons.health_and_safety_outlined),
+            title: const Text('Vault health'),
+            subtitle: const Text('Verify files and upgrade older encryption'),
+            onTap: () => Navigator.of(context).push(
+              MaterialPageRoute<void>(
+                builder: (_) => const VaultMaintenanceScreen(),
+              ),
+            ),
+          ),
           ListTile(
             leading: const Icon(Icons.delete_outline_rounded),
             title: const Text('Trash'),

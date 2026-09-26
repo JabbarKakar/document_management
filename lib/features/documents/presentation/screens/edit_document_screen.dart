@@ -36,8 +36,17 @@ class _EditDocumentScreenState extends State<EditDocumentScreen> {
       final result = await pick();
       if (mounted && result != null) setState(() => _pickedFile = result);
     } catch (error) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(
-        error is FormatException ? error.message : 'Could not open this file. Check access and try again.')));
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              error is FormatException
+                  ? error.message
+                  : 'Could not open this file. Check access and try again.',
+            ),
+          ),
+        );
+      }
     }
   }
 
@@ -130,12 +139,14 @@ class _EditDocumentScreenState extends State<EditDocumentScreen> {
           replacementFile: _pickedFile,
         );
         if (mounted) Navigator.of(context).pop();
-      } catch (_) {
+      } catch (error) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
+            SnackBar(
               content: Text(
-                'Could not save changes. Unlock the vault and try again.',
+                error is FormatException
+                    ? error.message
+                    : 'Could not save changes. Unlock the vault and try again.',
               ),
             ),
           );
@@ -160,12 +171,14 @@ class _EditDocumentScreenState extends State<EditDocumentScreen> {
         categoryId: _selectedCategory?.id,
       );
       if (mounted) Navigator.of(context).pop();
-    } catch (_) {
+    } catch (error) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
+          SnackBar(
             content: Text(
-              'Could not save the document. Your details have been kept.',
+              error is FormatException
+                  ? error.message
+                  : 'Could not save the document. Your details have been kept.',
             ),
           ),
         );
@@ -277,7 +290,8 @@ class _EditDocumentScreenState extends State<EditDocumentScreen> {
                         children: [
                           Expanded(
                             child: OutlinedButton.icon(
-                              onPressed: () => _pickFile(_picker.pickFromGallery),
+                              onPressed: () =>
+                                  _pickFile(_picker.pickFromGallery),
                               icon: const Icon(Icons.photo_library_outlined),
                               label: const Text('Replace from gallery'),
                             ),
@@ -285,7 +299,8 @@ class _EditDocumentScreenState extends State<EditDocumentScreen> {
                           const SizedBox(width: 10),
                           Expanded(
                             child: OutlinedButton.icon(
-                              onPressed: () => _pickFile(_picker.captureFromCamera),
+                              onPressed: () =>
+                                  _pickFile(_picker.captureFromCamera),
                               icon: const Icon(Icons.photo_camera_outlined),
                               label: const Text('Replace by camera'),
                             ),
@@ -368,7 +383,8 @@ class _EditDocumentScreenState extends State<EditDocumentScreen> {
                         children: [
                           Expanded(
                             child: OutlinedButton.icon(
-                              onPressed: () => _pickFile(_picker.pickFromGallery),
+                              onPressed: () =>
+                                  _pickFile(_picker.pickFromGallery),
                               icon: const Icon(Icons.photo_library_outlined),
                               label: const Text('Gallery'),
                             ),
@@ -376,7 +392,8 @@ class _EditDocumentScreenState extends State<EditDocumentScreen> {
                           const SizedBox(width: 10),
                           Expanded(
                             child: OutlinedButton.icon(
-                              onPressed: () => _pickFile(_picker.captureFromCamera),
+                              onPressed: () =>
+                                  _pickFile(_picker.captureFromCamera),
                               icon: const Icon(Icons.photo_camera_outlined),
                               label: const Text('Camera'),
                             ),
@@ -514,4 +531,3 @@ class _EditDocumentScreenState extends State<EditDocumentScreen> {
     );
   }
 }
-

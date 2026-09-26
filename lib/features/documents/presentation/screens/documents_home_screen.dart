@@ -13,6 +13,7 @@ import '../../../categories/domain/entities/vault_category.dart';
 import '../../../categories/presentation/providers/category_list_provider.dart';
 import '../../../categories/presentation/screens/category_management_screen.dart';
 import '../../../settings/presentation/screens/settings_screen.dart';
+import '../../../settings/presentation/screens/recovery_backup_screen.dart';
 import '../../data/services/document_file_picker.dart';
 import '../../domain/entities/vault_document.dart';
 import '../../domain/expiry_calendar.dart';
@@ -109,8 +110,8 @@ class _DocumentsHomeScreenState extends State<DocumentsHomeScreen> {
     );
   }
 
-  Future<bool> _confirmExportCount(int count) async {
-    final ok = await showDialog<bool>(
+  Future<String?> _confirmExportCount(int count) async {
+    final ok = await showDialog<String>(
       useRootNavigator: false,
       context: context,
       builder: (context) => AlertDialog(
@@ -118,28 +119,42 @@ class _DocumentsHomeScreenState extends State<DocumentsHomeScreen> {
           count == 1 ? 'Export document?' : 'Export $count documents?',
         ),
         content: const Text(
-          'Exported files are decrypted copies and will be saved unencrypted outside the vault.',
+          'Choose a password-protected package, or share decrypted copies. Shared copies are unencrypted outside the vault.',
         ),
         actions: [
           TextButton(
-            onPressed: () => Navigator.of(context).pop(false),
+            onPressed: () => Navigator.of(context).pop(),
             child: const Text('Cancel'),
           ),
+          TextButton(
+            onPressed: () => Navigator.of(context).pop('plain'),
+            child: const Text('Share copies'),
+          ),
           FilledButton(
-            onPressed: () => Navigator.of(context).pop(true),
-            child: const Text('Export'),
+            onPressed: () => Navigator.of(context).pop('encrypted'),
+            child: const Text('Encrypted package'),
           ),
         ],
       ),
     );
-    return ok == true;
+    return ok;
   }
 
   Future<void> _exportDocuments(List<VaultDocument> docs) async {
     if (docs.isEmpty || _isExporting) return;
     if (!await _ensureUnlocked(reason: 'export')) return;
-    if (!await _confirmExportCount(docs.length)) return;
+    final format = await _confirmExportCount(docs.length);
+    if (format == null) return;
     if (!mounted) return;
+    if (format == 'encrypted') {
+      await Navigator.of(context).push(
+        MaterialPageRoute<void>(
+          builder: (_) =>
+              RecoveryBackupScreen(documentIds: docs.map((d) => d.id).toSet()),
+        ),
+      );
+      return;
+    }
 
     final exportService = context.read<DocumentExportService>();
     final storage = context.read<EncryptedFileStorageService>();
@@ -238,8 +253,17 @@ class _DocumentsHomeScreenState extends State<DocumentsHomeScreen> {
     try {
       files = retryFiles ?? await _picker.pickMultipleForImport();
     } catch (error) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(
-        error is FormatException ? error.message : 'Could not read these files. Please retry.')));
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              error is FormatException
+                  ? error.message
+                  : 'Could not read these files. Please retry.',
+            ),
+          ),
+        );
+      }
       return;
     }
     if (files.isEmpty || !mounted) return;
@@ -288,7 +312,14 @@ class _DocumentsHomeScreenState extends State<DocumentsHomeScreen> {
         canPop: false,
         child: AlertDialog(
           title: const Text('Importing files'),
-          actions: [TextButton(onPressed: () { cancelled = true; }, child: const Text('Stop after current file'))],
+          actions: [
+            TextButton(
+              onPressed: () {
+                cancelled = true;
+              },
+              child: const Text('Stop after current file'),
+            ),
+          ],
           content: ValueListenableBuilder<(int, int, String)>(
             valueListenable: progress,
             builder: (_, p, child) {
@@ -362,7 +393,11 @@ class _DocumentsHomeScreenState extends State<DocumentsHomeScreen> {
                     '${r.failedNames.length} failed, ${r.total - r.succeeded - r.failedNames.length} not processed.\n${r.failedNames.take(5).join('\n')}',
         ),
         actions: [
-          if (r.retryFiles.isNotEmpty) TextButton(onPressed: () => Navigator.of(context).pop(true), child: const Text('Retry remaining')),
+          if (r.retryFiles.isNotEmpty)
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(true),
+              child: const Text('Retry remaining'),
+            ),
           FilledButton(
             onPressed: () => Navigator.of(context).pop(),
             child: const Text('OK'),
@@ -370,7 +405,9 @@ class _DocumentsHomeScreenState extends State<DocumentsHomeScreen> {
         ],
       ),
     );
-    if (retry == true && mounted) await _startBulkImport(retryFiles: r.retryFiles);
+    if (retry == true && mounted) {
+      await _startBulkImport(retryFiles: r.retryFiles);
+    }
   }
 
   Future<void> _openDetailsSheet(VaultDocument doc) async {

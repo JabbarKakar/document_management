@@ -265,6 +265,8 @@ class DocumentListProvider extends ChangeNotifier {
 
   Future<void> recordExport(int id) async =>
       _repository.recordActivity(id, 'Exported a decrypted copy');
+  Future<void> recordEncryptedExport(int id) async =>
+      _repository.recordActivity(id, 'Prepared a password-protected export');
 
   Future<void> addDocumentFromPicker({
     required String title,

@@ -4,10 +4,8 @@
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
     <uses-permission android:name="android.permission.VIBRATE"/>
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED"/>
-    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM"/>
-    <!-- Granted at install for alarm-style use; optional but helps exact schedules on Android 14+. -->
-    <uses-permission android:name="android.permission.USE_EXACT_ALARM"/>
     <application
+        android:allowBackup="false"
         android:label="document_management"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">

@@ -1,5 +1,5 @@
 import 'dart:convert';
-import 'dart:typed_data';
+import 'package:flutter/foundation.dart';
 
 import 'package:encrypt/encrypt.dart' as enc;
 import 'package:pointycastle/export.dart';
@@ -56,48 +56,77 @@ class VaultEncryptionService {
     _cachedKey = null;
   }
 
-  Future<Uint8List> encryptDocumentBytes(Uint8List plain) async {
+  Future<Uint8List> encryptDocumentBytes(Uint8List plain) =>
+      _transform(plain, true);
+  Future<Uint8List> decryptDocumentBytes(Uint8List stored) =>
+      _transform(stored, false);
+
+  Future<Uint8List> _transform(Uint8List bytes, bool encrypt) async {
+    final generation = _generation;
     final key = await _loadKey();
+    final input = (bytes, key.bytes, encrypt);
+    final result = bytes.length > 64 * 1024
+        ? await compute(_transformVaultBytes, input)
+        : _transformVaultBytes(input);
+    if (generation != _generation) {
+      throw StateError('Vault locked during encryption.');
+    }
+    return result;
+  }
+
+  static bool isAuthenticated(Uint8List stored) =>
+      stored.length >= 9 &&
+      PasswordCrypto.constantEquals(
+        stored.sublist(0, 9),
+        utf8.encode(_authenticatedMagic),
+      );
+}
+
+Uint8List _transformVaultBytes((Uint8List, Uint8List, bool) input) {
+  final (bytes, key, encrypt) = input;
+  if (encrypt) {
     final nonce = PasswordCrypto.randomBytes(12);
-    final header = Uint8List.fromList([...utf8.encode(_authenticatedMagic), ...nonce]);
+    final header = Uint8List.fromList([
+      ...utf8.encode(VaultEncryptionService._authenticatedMagic),
+      ...nonce,
+    ]);
     final cipher = GCMBlockCipher(AESEngine())
-      ..init(true, AEADParameters(KeyParameter(key.bytes), 128, nonce, header));
-    return Uint8List.fromList([...header, ...cipher.process(plain)]);
+      ..init(true, AEADParameters(KeyParameter(key), 128, nonce, header));
+    return Uint8List.fromList([...header, ...cipher.process(bytes)]);
   }
-
-  Future<Uint8List> decryptDocumentBytes(Uint8List stored) async {
-    if (isAuthenticated(stored)) {
-      if (stored.length < 37) throw const FormatException('Truncated vault file.');
-      final key = await _loadKey();
-      try {
-        final cipher = GCMBlockCipher(AESEngine())
-          ..init(false, AEADParameters(KeyParameter(key.bytes), 128,
-              Uint8List.sublistView(stored, 9, 21), Uint8List.sublistView(stored, 0, 21)));
-        return cipher.process(Uint8List.sublistView(stored, 21));
-      } on InvalidCipherTextException {
-        throw const FormatException('Vault file integrity check failed.');
-      }
+  if (VaultEncryptionService.isAuthenticated(bytes)) {
+    if (bytes.length < 37) throw const FormatException('Truncated vault file.');
+    try {
+      final cipher = GCMBlockCipher(AESEngine())
+        ..init(
+          false,
+          AEADParameters(
+            KeyParameter(key),
+            128,
+            Uint8List.sublistView(bytes, 9, 21),
+            Uint8List.sublistView(bytes, 0, 21),
+          ),
+        );
+      return cipher.process(Uint8List.sublistView(bytes, 21));
+    } on InvalidCipherTextException {
+      throw const FormatException('Vault file integrity check failed.');
     }
-    final magicBytes = utf8.encode(_magic);
-    if (stored.length < magicBytes.length + 16) throw const FormatException('Unsupported or truncated vault file.');
-    for (var i = 0; i < magicBytes.length; i++) {
-      if (stored[i] != magicBytes[i]) {
-        throw const FormatException('Unsupported vault file. Legacy plaintext requires explicit migration.');
-      }
-    }
-    final ivStart = magicBytes.length;
-    final iv = enc.IV(Uint8List.sublistView(stored, ivStart, ivStart + 16));
-    final cipherStart = ivStart + 16;
-    if (cipherStart >= stored.length) {
-      throw const FormatException('Truncated vault file.');
-    }
-    final cipherBytes = Uint8List.sublistView(stored, cipherStart);
-    final key = await _loadKey();
-    final encrypter = enc.Encrypter(enc.AES(key, mode: enc.AESMode.cbc));
-    final plain = encrypter.decryptBytes(enc.Encrypted(cipherBytes), iv: iv);
-    return Uint8List.fromList(plain);
   }
-
-  static bool isAuthenticated(Uint8List stored) => stored.length >= 9 &&
-      PasswordCrypto.constantEquals(stored.sublist(0, 9), utf8.encode(_authenticatedMagic));
+  final magic = utf8.encode(VaultEncryptionService._magic);
+  if (bytes.length <= magic.length + 16 ||
+      !PasswordCrypto.constantEquals(bytes.sublist(0, magic.length), magic)) {
+    throw const FormatException(
+      'Unsupported vault file. Legacy plaintext requires explicit migration.',
+    );
+  }
+  final iv = enc.IV(
+    Uint8List.sublistView(bytes, magic.length, magic.length + 16),
+  );
+  final cipher = enc.Encrypter(enc.AES(enc.Key(key), mode: enc.AESMode.cbc));
+  return Uint8List.fromList(
+    cipher.decryptBytes(
+      enc.Encrypted(Uint8List.sublistView(bytes, magic.length + 16)),
+      iv: iv,
+    ),
+  );
 }

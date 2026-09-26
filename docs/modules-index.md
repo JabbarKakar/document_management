@@ -1,9 +1,14 @@
-# Document Vault – Module Index
+# Module index
 
-Structured milestones for the personal offline Android/iOS vault. Modules **1–13, 16, 18, and 19** have implementations. Module **17** supports replacement without version history. Module **20** now has an initial portable encrypted backup/restore flow; **21** has session/PIN/device-unlock hardening but further storage hardening remains. Modules **22 and 29** are partial. Other entries remain proposals, not shipped features.
+The personal offline Android/iOS vault implements the core modules plus favorites,
+tags, fixed smart views, Trash, three retained file versions, portable recovery,
+selected encrypted export, local activity, per-document reminders, on-device OCR,
+scanner crop/rotation/reordering, and vault integrity checks. Numbered documents
+below describe broader module ideas and should not be read as completion claims.
 
-See [security/recovery delivery and device QA](security-recovery-implementation.md) for exact scope and current limits. Trash (24) and version retention are not yet implemented.
-
+See [current implementation status and limits](implementation-status.md) and
+[security/recovery device QA](security-recovery-implementation.md). Native iOS QA
+and production signing remain release gates. Desktop (34) is outside the agreed scope.
 | Module | Title | Doc |
 |--------|--------|-----|
 | 1 | App Initialization | [module-1-app-initialization.md](module-1-app-initialization.md) |

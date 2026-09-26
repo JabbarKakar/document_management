@@ -29,7 +29,13 @@ import ImageIO
           request.recognitionLevel = .accurate
           request.recognitionLanguages = ["en-US"]
           request.usesLanguageCorrection = true
-          let handler = VNImageRequestHandler(data: bytes.data, options: [:])
+          guard let source = CGImageSourceCreateWithData(bytes.data as CFData, nil),
+                let image = CGImageSourceCreateThumbnailAtIndex(source, 0, [
+                  kCGImageSourceCreateThumbnailFromImageAlways: true,
+                  kCGImageSourceCreateThumbnailWithTransform: true,
+                  kCGImageSourceThumbnailMaxPixelSize: 2400
+                ] as CFDictionary) else { throw NSError(domain: "VaultOCR", code: 1) }
+          let handler = VNImageRequestHandler(cgImage: image, options: [:])
           try handler.perform([request])
           let text = (request.results ?? []).compactMap { $0.topCandidates(1).first?.string }.joined(separator: "\n")
           DispatchQueue.main.async { result(text) }

@@ -11,7 +11,8 @@ import '../../../documents/presentation/providers/document_list_provider.dart';
 import '../../../categories/presentation/providers/category_list_provider.dart';
 
 class RecoveryBackupScreen extends StatefulWidget {
-  const RecoveryBackupScreen({super.key});
+  const RecoveryBackupScreen({super.key, this.documentIds});
+  final Set<int>? documentIds;
   @override
   State<RecoveryBackupScreen> createState() => _RecoveryBackupScreenState();
 }
@@ -84,8 +85,14 @@ class _RecoveryBackupScreenState extends State<RecoveryBackupScreen> {
           setState(() => _message = 'Restored $count documents.$warning');
         }
       } else {
-        final bytes = await service.create(password);
+        final bytes = await service.create(
+          password,
+          documentIds: widget.documentIds,
+        );
         auth.requireUnlocked();
+        for (final id in widget.documentIds ?? <int>{}) {
+          await documents.recordEncryptedExport(id);
+        }
         final saved = await FilePicker.platform.saveFile(
           dialogTitle: 'Save encrypted recovery backup',
           fileName:
@@ -126,7 +133,13 @@ class _RecoveryBackupScreenState extends State<RecoveryBackupScreen> {
     return PopScope(
       canPop: !_busy,
       child: Scaffold(
-        appBar: AppBar(title: const Text('Backup & recovery')),
+        appBar: AppBar(
+          title: Text(
+            widget.documentIds == null
+                ? 'Backup & recovery'
+                : 'Encrypted export',
+          ),
+        ),
         body: Center(
           child: ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: 600),
@@ -134,12 +147,16 @@ class _RecoveryBackupScreenState extends State<RecoveryBackupScreen> {
               padding: const EdgeInsets.all(20),
               children: [
                 Text(
-                  'Recover after losing your device',
+                  widget.documentIds == null
+                      ? 'Recover after losing your device'
+                      : 'Protect ${widget.documentIds!.length} selected documents',
                   style: Theme.of(context).textTheme.titleLarge,
                 ),
                 const SizedBox(height: 12),
-                const Text(
-                  'Save an encrypted backup to a location you can access without this phone. On a new Android or iPhone installation, create a vault PIN, then return here and restore using the backup password.',
+                Text(
+                  widget.documentIds == null
+                      ? 'Save an encrypted backup to a location you can access without this phone. On a new Android or iPhone installation, create a vault PIN, then return here and restore using the backup password.'
+                      : 'Export the selected current files with their titles, notes, tags, categories and dates. Previous files and activity history are excluded. The recipient can use Backup & recovery to restore this package into an empty vault.',
                 ),
                 const SizedBox(height: 12),
                 const Text(
@@ -147,7 +164,7 @@ class _RecoveryBackupScreenState extends State<RecoveryBackupScreen> {
                 ),
                 const SizedBox(height: 12),
                 const Text(
-                  'This first backup format supports up to 1,000 documents and 32 MB of file content. Restore requires an empty vault and preserves your new device’s PIN and security settings.',
+                  'Packages support up to 1,000 documents and 32 MB of file content, including retained versions in a full backup. Restore requires an empty vault and preserves your new device’s PIN and security settings.',
                 ),
                 const SizedBox(height: 24),
                 TextField(
@@ -176,14 +193,19 @@ class _RecoveryBackupScreenState extends State<RecoveryBackupScreen> {
                 FilledButton.icon(
                   onPressed: _busy ? null : () => _run(false),
                   icon: const Icon(Icons.save_alt_rounded),
-                  label: const Text('Create encrypted backup'),
+                  label: Text(
+                    widget.documentIds == null
+                        ? 'Create encrypted backup'
+                        : 'Save encrypted package',
+                  ),
                 ),
                 const SizedBox(height: 12),
-                OutlinedButton.icon(
-                  onPressed: _busy ? null : () => _run(true),
-                  icon: const Icon(Icons.restore_rounded),
-                  label: const Text('Restore into empty vault'),
-                ),
+                if (widget.documentIds == null)
+                  OutlinedButton.icon(
+                    onPressed: _busy ? null : () => _run(true),
+                    icon: const Icon(Icons.restore_rounded),
+                    label: const Text('Restore into empty vault'),
+                  ),
                 if (_busy)
                   const Padding(
                     padding: EdgeInsets.all(16),

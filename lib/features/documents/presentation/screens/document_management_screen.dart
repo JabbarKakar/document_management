@@ -30,18 +30,37 @@ class _DocumentManagementScreenState extends State<DocumentManagementScreen> {
     final storage = context.read<EncryptedFileStorageService>();
     final provider = context.read<DocumentListProvider>();
     _cancelOcr = false;
-    setState(() { _extracting = true; _ocrStatus = 'Reading text on this device…'; });
+    setState(() {
+      _extracting = true;
+      _ocrStatus = 'Reading text on this device…';
+    });
     await _run(() async {
-      final text = await DocumentOcrService(storage).extract(document,
-        isCancelled: () => _cancelOcr || !mounted, onProgress: (done, total) {
-          if (mounted) setState(() => _ocrStatus = 'Read $done of $total pages');
-        });
+      final text = await DocumentOcrService(storage).extract(
+        document,
+        isCancelled: () => _cancelOcr || !mounted,
+        onProgress: (done, total) {
+          if (mounted) {
+            setState(() => _ocrStatus = 'Read $done of $total pages');
+          }
+        },
+      );
       if (_cancelOcr || !mounted) return;
-      await provider.updateOrganization(document.id, extractedText: text, expectedFilePath: document.filePath);
-      if (mounted) setState(() => _ocrStatus = text.isEmpty ? 'No text found. Try a clearer scan.' : 'Text saved for search. Please check recognition accuracy.');
+      await provider.updateOrganization(
+        document.id,
+        extractedText: text,
+        expectedFilePath: document.filePath,
+      );
+      if (mounted) {
+        setState(
+          () => _ocrStatus = text.isEmpty
+              ? 'No text found. Try a clearer scan.'
+              : 'Text saved for search. Please check recognition accuracy.',
+        );
+      }
     });
     if (mounted) setState(() => _extracting = false);
   }
+
   @override
   void initState() {
     super.initState();
@@ -49,6 +68,7 @@ class _DocumentManagementScreenState extends State<DocumentManagementScreen> {
       if (mounted) context.read<DocumentListProvider>().loadDocuments();
     });
   }
+
   @override
   void dispose() {
     _tags.dispose();
@@ -126,20 +146,51 @@ class _DocumentManagementScreenState extends State<DocumentManagementScreen> {
                 child: const Text('Save tags'),
               ),
               const Divider(),
-              Text('Reminders', style: Theme.of(context).textTheme.titleLarge),
-              Text('Searchable text', style: Theme.of(context).textTheme.titleMedium),
-              const Text('Extract English/Latin text on this device. Up to 20 MB and 20 PDF pages. Recognition may contain mistakes.'),
-              Wrap(spacing: 8, children: [
-                OutlinedButton.icon(onPressed: _busy ? null : () => _extract(doc),
-                  icon: const Icon(Icons.document_scanner_outlined), label: const Text('Extract text')),
-                if (_extracting) TextButton(onPressed: () => setState(() { _cancelOcr = true; _ocrStatus = 'Stopping after the current page…'; }), child: const Text('Cancel')),
-                if (doc.extractedText?.isNotEmpty == true) TextButton(onPressed: _busy ? null : () =>
-                  _run(() => provider.updateOrganization(doc.id, extractedText: '')), child: const Text('Clear search text')),
-              ]),
+              Text(
+                'Searchable text',
+                style: Theme.of(context).textTheme.titleMedium,
+              ),
+              const Text(
+                'Extract English/Latin text on this device. Up to 20 MB and 20 PDF pages. Recognition may contain mistakes.',
+              ),
+              Wrap(
+                spacing: 8,
+                children: [
+                  OutlinedButton.icon(
+                    onPressed: _busy ? null : () => _extract(doc),
+                    icon: const Icon(Icons.document_scanner_outlined),
+                    label: const Text('Extract text'),
+                  ),
+                  if (_extracting)
+                    TextButton(
+                      onPressed: () => setState(() {
+                        _cancelOcr = true;
+                        _ocrStatus = 'Stopping after the current page…';
+                      }),
+                      child: const Text('Cancel'),
+                    ),
+                  if (doc.extractedText?.isNotEmpty == true)
+                    TextButton(
+                      onPressed: _busy
+                          ? null
+                          : () => _run(
+                              () => provider.updateOrganization(
+                                doc.id,
+                                extractedText: '',
+                              ),
+                            ),
+                      child: const Text('Clear search text'),
+                    ),
+                ],
+              ),
               if (_ocrStatus != null) Text(_ocrStatus!),
-              if (doc.extractedText?.isNotEmpty == true) ExpansionTile(title: const Text('Review extracted text'),
-                children: [SelectableText(doc.extractedText!)]),
+              if (doc.extractedText?.isNotEmpty == true)
+                ExpansionTile(
+                  title: const Text('Review extracted text'),
+                  children: [SelectableText(doc.extractedText!)],
+                ),
               const Divider(),
+              Text('Reminders', style: Theme.of(context).textTheme.titleLarge),
               SwitchListTile(
                 contentPadding: EdgeInsets.zero,
                 title: const Text('Reminders for this document'),

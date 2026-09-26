@@ -1,5 +1,3 @@
-import 'dart:typed_data';
-
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 import 'package:image_picker/image_picker.dart';
@@ -38,68 +36,167 @@ class _CameraScannerScreenState extends State<CameraScannerScreen> {
   ScanEnhancementPreset _preset = ScanEnhancementPreset.document;
 
   void _showError(Object error) {
-    if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(
-      error is FormatException ? error.message : 'Could not process the scan. Your captured pages are still available.')));
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            error is FormatException
+                ? error.message
+                : 'Could not process the scan. Your captured pages are still available.',
+          ),
+        ),
+      );
+    }
   }
 
   Future<void> _editPage(int index, String action) async {
     if (_isBuilding || _isCapturing) return;
     if (action == 'earlier' || action == 'later') {
-      setState(() { final page = _rawPages.removeAt(index); _rawPages.insert(index + (action == 'earlier' ? -1 : 1), page); });
+      setState(() {
+        final page = _rawPages.removeAt(index);
+        _rawPages.insert(index + (action == 'earlier' ? -1 : 1), page);
+      });
       return;
     }
     final crop = <double>[0, 0, 0, 0];
     if (action == 'crop') {
-      var preview = compute(processScanPage, (_rawPages[index], _preset.index, 0, List<double>.from(crop), 700));
-      final ok = await showDialog<bool>(context: context, useRootNavigator: false,
-        builder: (context) => StatefulBuilder(builder: (context, update) => AlertDialog(
-          title: const Text('Crop page edges'),
-          content: SizedBox(width: 400, child: SingleChildScrollView(child: Column(mainAxisSize: MainAxisSize.min, children: [
-            SizedBox(height: 150, child: FutureBuilder<Uint8List>(future: preview, builder: (context, snapshot) =>
-              snapshot.connectionState == ConnectionState.done && snapshot.hasData ? Image.memory(snapshot.data!, fit: BoxFit.contain) : const Center(child: CircularProgressIndicator()))),
-            for (var i = 0; i < 4; i++) Column(children: [
-              Text('${['Left', 'Top', 'Right', 'Bottom'][i]}: ${(crop[i] * 100).round()}%'),
-              Slider(value: crop[i], min: 0, max: 0.45, divisions: 45,
-                semanticFormatterCallback: (v) => '${(v * 100).round()} percent',
-                onChanged: (v) => update(() => crop[i] = v),
-                onChangeEnd: (_) => update(() => preview = compute(processScanPage,
-                  (_rawPages[index], _preset.index, 0, List<double>.from(crop), 700)))),
-            ]),
-          ]))),
-          actions: [TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
-            FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('Apply'))],
-        )));
+      var preview = compute(processScanPage, (
+        _rawPages[index],
+        _preset.index,
+        0,
+        List<double>.from(crop),
+        700,
+      ));
+      final ok = await showDialog<bool>(
+        context: context,
+        useRootNavigator: false,
+        builder: (context) => StatefulBuilder(
+          builder: (context, update) => AlertDialog(
+            title: const Text('Crop page edges'),
+            content: SizedBox(
+              width: 400,
+              child: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    SizedBox(
+                      height: 150,
+                      child: FutureBuilder<Uint8List>(
+                        future: preview,
+                        builder: (context, snapshot) =>
+                            snapshot.connectionState == ConnectionState.done &&
+                                snapshot.hasData
+                            ? Image.memory(snapshot.data!, fit: BoxFit.contain)
+                            : const Center(child: CircularProgressIndicator()),
+                      ),
+                    ),
+                    for (var i = 0; i < 4; i++)
+                      Column(
+                        children: [
+                          Text(
+                            '${['Left', 'Top', 'Right', 'Bottom'][i]}: ${(crop[i] * 100).round()}%',
+                          ),
+                          Slider(
+                            value: crop[i],
+                            min: 0,
+                            max: 0.45,
+                            divisions: 45,
+                            semanticFormatterCallback: (v) =>
+                                '${(v * 100).round()} percent',
+                            onChanged: (v) => update(() => crop[i] = v),
+                            onChangeEnd: (_) => update(
+                              () => preview = compute(processScanPage, (
+                                _rawPages[index],
+                                _preset.index,
+                                0,
+                                List<double>.from(crop),
+                                700,
+                              )),
+                            ),
+                          ),
+                        ],
+                      ),
+                  ],
+                ),
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context, false),
+                child: const Text('Cancel'),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.pop(context, true),
+                child: const Text('Apply'),
+              ),
+            ],
+          ),
+        ),
+      );
       if (ok != true || !mounted) return;
     }
     setState(() => _isBuilding = true);
     try {
       final original = _rawPages[index];
-      final edited = await compute(processScanPage, (original, 0, action == 'rotate' ? 1 : 0, crop, 3200));
-      if (mounted) setState(() { _rawPages[index] = edited; _previews.remove(original); });
-    } catch (error) { _showError(error); }
-    finally { if (mounted) setState(() => _isBuilding = false); }
+      final edited = await compute(processScanPage, (
+        original,
+        0,
+        action == 'rotate' ? 1 : 0,
+        crop,
+        3200,
+      ));
+      if (mounted) {
+        setState(() {
+          _rawPages[index] = edited;
+          _previews.remove(original);
+        });
+      }
+    } catch (error) {
+      _showError(error);
+    } finally {
+      if (mounted) setState(() => _isBuilding = false);
+    }
   }
 
   Future<void> _capturePage() async {
     if (_isCapturing || _isBuilding) return;
     setState(() => _isCapturing = true);
     try {
-      if (_rawPages.length >= 20) throw const FormatException('Save this scan before capturing more than 20 pages.');
+      if (_rawPages.length >= 20) {
+        throw const FormatException(
+          'Save this scan before capturing more than 20 pages.',
+        );
+      }
       final picked = await _picker.pickImage(
         source: ImageSource.camera,
         imageQuality: 95,
-        maxWidth: 3200, maxHeight: 3200,
+        maxWidth: 3200,
+        maxHeight: 3200,
       );
       if (picked == null) return;
       final size = await picked.length();
-      if (size > DocumentImportLimits.fileBytes || _rawPages.fold<int>(0, (sum, b) => sum + b.length) + size > DocumentImportLimits.batchBytes) {
-        throw const FormatException('This scan is too large. Save it before adding more pages.');
+      if (size > DocumentImportLimits.fileBytes ||
+          _rawPages.fold<int>(0, (sum, b) => sum + b.length) + size >
+              DocumentImportLimits.batchBytes) {
+        throw const FormatException(
+          'This scan is too large. Save it before adding more pages.',
+        );
       }
       final bytes = await picked.readAsBytes();
       if (!mounted || bytes.isEmpty) return;
-      final preview = await compute(processScanPage, (bytes, _preset.index, 0, <double>[0,0,0,0], 700));
+      final preview = await compute(processScanPage, (
+        bytes,
+        _preset.index,
+        0,
+        <double>[0, 0, 0, 0],
+        700,
+      ));
       if (!mounted) return;
-      setState(() { _rawPages.add(bytes); _previews[bytes] = Future.value(preview); if (_rawPages.length > 1) _output = ScanOutputFormat.pdf; });
+      setState(() {
+        _rawPages.add(bytes);
+        _previews[bytes] = Future.value(preview);
+        if (_rawPages.length > 1) _output = ScanOutputFormat.pdf;
+      });
     } catch (error) {
       _showError(error);
     } finally {
@@ -113,7 +210,15 @@ class _CameraScannerScreenState extends State<CameraScannerScreen> {
     try {
       final processed = <Uint8List>[];
       for (final page in _rawPages) {
-        processed.add(await compute(processScanPage, (page, _preset.index, 0, <double>[0,0,0,0], 2200)));
+        processed.add(
+          await compute(processScanPage, (
+            page,
+            _preset.index,
+            0,
+            <double>[0, 0, 0, 0],
+            2200,
+          )),
+        );
       }
       final stamp = DateTime.now().millisecondsSinceEpoch;
       late final PickedDocumentFile out;
@@ -160,17 +265,22 @@ class _CameraScannerScreenState extends State<CameraScannerScreen> {
             padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
             child: Column(
               children: [
-                SegmentedButton<ScanEnhancementPreset>(
-                  showSelectedIcon: false,
-                  segments: [
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
                     for (final p in ScanEnhancementPreset.values)
-                      ButtonSegment<ScanEnhancementPreset>(
-                        value: p,
+                      ChoiceChip(
+                        selected: _preset == p,
                         label: Text(p.label),
+                        onSelected: _isBuilding || _isCapturing
+                            ? null
+                            : (_) => setState(() {
+                                _preset = p;
+                                _previews.clear();
+                              }),
                       ),
                   ],
-                  selected: {_preset},
-                  onSelectionChanged: _isBuilding ? null : (s) => setState(() { _preset = s.first; _previews.clear(); }),
                 ),
                 const SizedBox(height: 10),
                 SegmentedButton<ScanOutputFormat>(
@@ -187,9 +297,12 @@ class _CameraScannerScreenState extends State<CameraScannerScreen> {
                     ),
                   ],
                   selected: {_output},
-                  onSelectionChanged: _isBuilding ? null : (s) => setState(() => _output = s.first),
+                  onSelectionChanged: _isBuilding
+                      ? null
+                      : (s) => setState(() => _output = s.first),
                 ),
-                if (_rawPages.length > 1) const Text('Multiple pages are saved together as a PDF.'),
+                if (_rawPages.length > 1)
+                  const Text('Multiple pages are saved together as a PDF.'),
               ],
             ),
           ),
@@ -199,8 +312,8 @@ class _CameraScannerScreenState extends State<CameraScannerScreen> {
                     child: Text(
                       'Capture pages to build a scan',
                       style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                            color: scheme.onSurfaceVariant,
-                          ),
+                        color: scheme.onSurfaceVariant,
+                      ),
                     ),
                   )
                 : GridView.builder(
@@ -208,10 +321,10 @@ class _CameraScannerScreenState extends State<CameraScannerScreen> {
                     itemCount: _rawPages.length,
                     gridDelegate:
                         const SliverGridDelegateWithFixedCrossAxisCount(
-                      crossAxisCount: 2,
-                      crossAxisSpacing: 10,
-                      mainAxisSpacing: 10,
-                    ),
+                          crossAxisCount: 2,
+                          crossAxisSpacing: 10,
+                          mainAxisSpacing: 10,
+                        ),
                     itemBuilder: (context, index) {
                       final pageNo = index + 1;
                       return Stack(
@@ -220,12 +333,33 @@ class _CameraScannerScreenState extends State<CameraScannerScreen> {
                             child: ClipRRect(
                               borderRadius: BorderRadius.circular(12),
                               child: FutureBuilder<Uint8List>(
-                                future: _previews.putIfAbsent(_rawPages[index], () => compute(processScanPage,
-                                  (_rawPages[index], _preset.index, 0, <double>[0,0,0,0], 700))),
+                                future: _previews.putIfAbsent(
+                                  _rawPages[index],
+                                  () => compute(processScanPage, (
+                                    _rawPages[index],
+                                    _preset.index,
+                                    0,
+                                    <double>[0, 0, 0, 0],
+                                    700,
+                                  )),
+                                ),
                                 builder: (context, snapshot) {
-                                  if (snapshot.hasError) return const Center(child: Text('Preview unavailable'));
-                                  if (snapshot.connectionState != ConnectionState.done || !snapshot.hasData) return const Center(child: CircularProgressIndicator());
-                                  return Image.memory(snapshot.data!, fit: BoxFit.contain);
+                                  if (snapshot.hasError) {
+                                    return const Center(
+                                      child: Text('Preview unavailable'),
+                                    );
+                                  }
+                                  if (snapshot.connectionState !=
+                                          ConnectionState.done ||
+                                      !snapshot.hasData) {
+                                    return const Center(
+                                      child: CircularProgressIndicator(),
+                                    );
+                                  }
+                                  return Image.memory(
+                                    snapshot.data!,
+                                    fit: BoxFit.contain,
+                                  );
                                 },
                               ),
                             ),
@@ -242,20 +376,42 @@ class _CameraScannerScreenState extends State<CameraScannerScreen> {
                               tooltip: 'Remove page',
                               onPressed: _isBuilding
                                   ? null
-                                  : () => setState(() => _rawPages.removeAt(index)),
+                                  : () => setState(() {
+                                      final removed = _rawPages.removeAt(index);
+                                      _previews.remove(removed);
+                                    }),
                               icon: const Icon(Icons.close_rounded),
                             ),
                           ),
-                          Positioned(right: 4, bottom: 4, child: PopupMenuButton<String>(
-                            tooltip: 'Edit page $pageNo', enabled: !_isBuilding && !_isCapturing,
-                            onSelected: (action) => _editPage(index, action),
-                            itemBuilder: (_) => [
-                              const PopupMenuItem(value: 'rotate', child: Text('Rotate clockwise')),
-                              const PopupMenuItem(value: 'crop', child: Text('Crop edges')),
-                              if (index > 0) const PopupMenuItem(value: 'earlier', child: Text('Move earlier')),
-                              if (index < _rawPages.length - 1) const PopupMenuItem(value: 'later', child: Text('Move later')),
-                            ],
-                          )),
+                          Positioned(
+                            right: 4,
+                            bottom: 4,
+                            child: PopupMenuButton<String>(
+                              tooltip: 'Edit page $pageNo',
+                              enabled: !_isBuilding && !_isCapturing,
+                              onSelected: (action) => _editPage(index, action),
+                              itemBuilder: (_) => [
+                                const PopupMenuItem(
+                                  value: 'rotate',
+                                  child: Text('Rotate clockwise'),
+                                ),
+                                const PopupMenuItem(
+                                  value: 'crop',
+                                  child: Text('Crop edges'),
+                                ),
+                                if (index > 0)
+                                  const PopupMenuItem(
+                                    value: 'earlier',
+                                    child: Text('Move earlier'),
+                                  ),
+                                if (index < _rawPages.length - 1)
+                                  const PopupMenuItem(
+                                    value: 'later',
+                                    child: Text('Move later'),
+                                  ),
+                              ],
+                            ),
+                          ),
                         ],
                       );
                     },
@@ -302,5 +458,3 @@ class _CameraScannerScreenState extends State<CameraScannerScreen> {
     );
   }
 }
-
-

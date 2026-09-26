@@ -1,4 +1,4 @@
-# Security and recovery implementation — first delivery
+# Security and recovery implementation
 
 Product decisions: personal/offline; Android and iOS; device credentials may
 unlock independently of the vault PIN. No server, cloud account, or remote reset.
@@ -51,10 +51,10 @@ This Windows development environment does not substitute for real Android/iOS QA
    artwork removal. Verify privacy settings against actual lock-screen display.
 7. Validate keyboard-open and large-text layout on small phones and iPad.
 
-## Not delivered in this phase
+## Subsequent implementation
 
-Trash/retention, previous versions, tags, OCR, configurable reminder offsets,
-streaming large backups, authenticated migration of existing document blobs,
-metadata encryption, integrity repair/cleanup queue, and a production signing
-configuration remain roadmap work. PIN/device recovery cannot recover a missing
-vault encryption key; a usable independent backup is required.
+Trash, three retained file versions, tags, favorites, local activity, custom
+reminder offsets, on-device OCR, authenticated file migration and private-text
+encryption are now implemented. Vault health also offers conservative cleanup of
+unused generated files. See [implementation status](implementation-status.md)
+for current bounds, remaining privacy limitations, native QA and later enhancements.
