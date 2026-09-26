@@ -1,3 +1,5 @@
+import '../../../../core/widgets/vault_identity.dart';
+import '../widgets/vault_overview.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:share_plus/share_plus.dart';
@@ -628,7 +630,7 @@ class _DocumentsHomeScreenState extends State<DocumentsHomeScreen> {
     for (final document in documents) {
       final expiry = document.expiryDate;
       if (expiry == null) continue;
-      if (calendarDaysUntilExpiry(expiry) < _expiringWindowDays) count++;
+      if (calendarDaysUntilExpiry(expiry) <= _expiringWindowDays) count++;
     }
     return count;
   }
@@ -652,7 +654,13 @@ class _DocumentsHomeScreenState extends State<DocumentsHomeScreen> {
         final contentWidth = wide
             ? constraints.maxWidth - railWidth
             : constraints.maxWidth;
-        final columns = contentWidth >= AppBreakpoints.gridThree ? 3 : 2;
+        final columns =
+            MediaQuery.textScalerOf(context).scale(16) > 24 ||
+                contentWidth < 360
+            ? 1
+            : contentWidth >= AppBreakpoints.gridThree
+            ? 3
+            : 2;
         final textScaler = MediaQuery.textScalerOf(context);
         final gridExtent = textScaler.scale(312);
 
@@ -684,7 +692,29 @@ class _DocumentsHomeScreenState extends State<DocumentsHomeScreen> {
                   onDelete: () => _confirmBatchDelete(selectedVisibleDocs),
                   onClose: _clearSelection,
                 )
-              : null,
+              : wide
+              ? null
+              : NavigationBar(
+                  selectedIndex: 0,
+                  onDestinationSelected: (index) {
+                    if (index == 1) _openCategories();
+                    if (index == 2) _openSettings();
+                  },
+                  destinations: const [
+                    NavigationDestination(
+                      icon: Icon(Icons.grid_view_rounded),
+                      label: 'Library',
+                    ),
+                    NavigationDestination(
+                      icon: Icon(Icons.folder_outlined),
+                      label: 'Categories',
+                    ),
+                    NavigationDestination(
+                      icon: Icon(Icons.tune_rounded),
+                      label: 'Settings',
+                    ),
+                  ],
+                ),
           body: SafeArea(
             bottom: !_selectionMode,
             child: Row(
@@ -714,6 +744,8 @@ class _DocumentsHomeScreenState extends State<DocumentsHomeScreen> {
                             children: [
                               Row(
                                 children: [
+                                  const VaultMark(size: 40),
+                                  const SizedBox(width: 10),
                                   Expanded(
                                     child: Text(
                                       'Vault',
@@ -732,15 +764,6 @@ class _DocumentsHomeScreenState extends State<DocumentsHomeScreen> {
                                       size: 22,
                                     ),
                                   ),
-                                  if (!wide)
-                                    IconButton(
-                                      tooltip: 'Settings',
-                                      onPressed: _openSettings,
-                                      icon: const Icon(
-                                        Icons.settings_outlined,
-                                        size: 22,
-                                      ),
-                                    ),
                                 ],
                               ),
                               const SizedBox(height: AppSpacing.md),
@@ -751,12 +774,20 @@ class _DocumentsHomeScreenState extends State<DocumentsHomeScreen> {
                                     .setSearchQuery(value),
                               ),
                               const SizedBox(height: AppSpacing.md),
-                              VaultPulseRow(
-                                documents: visibleDocs.length,
-                                expiring: _expiringCount(visibleDocs),
-                                categories: categories.length,
+                              VaultOverview(
+                                documents: provider.allDocuments.length,
+                                attention: _expiringCount(
+                                  provider.allDocuments,
+                                ),
+                                onAttention: () =>
+                                    provider.setSmartView('expiring'),
                               ),
-                              const SizedBox(height: AppSpacing.sm),
+                              const SizedBox(height: 24),
+                              Text(
+                                'Your library',
+                                style: Theme.of(context).textTheme.titleLarge,
+                              ),
+                              const SizedBox(height: 8),
                               VaultBrowserToolbar(
                                 grid: _gridView,
                                 onViewMode: (grid) =>
@@ -783,24 +814,28 @@ class _DocumentsHomeScreenState extends State<DocumentsHomeScreen> {
                             horizontal: 20,
                             vertical: 8,
                           ),
-                          child: Wrap(
-                            spacing: 8,
-                            runSpacing: 8,
-                            children: [
-                              for (final entry in const {
-                                'all': 'All',
-                                'favorites': 'Favorites',
-                                'uncategorized': 'Uncategorized',
-                                'expiring': 'Expiry attention',
-                                'recent': 'Recent',
-                              }.entries)
-                                ChoiceChip(
-                                  label: Text(entry.value),
-                                  selected: provider.smartView == entry.key,
-                                  onSelected: (_) =>
-                                      provider.setSmartView(entry.key),
-                                ),
-                            ],
+                          child: SingleChildScrollView(
+                            scrollDirection: Axis.horizontal,
+                            child: Row(
+                              children: [
+                                for (final entry in const {
+                                  'all': 'All',
+                                  'favorites': 'Favorites',
+                                  'uncategorized': 'Uncategorized',
+                                  'expiring': 'Expiry attention',
+                                  'recent': 'Recent',
+                                }.entries)
+                                  Padding(
+                                    padding: const EdgeInsets.only(right: 8),
+                                    child: ChoiceChip(
+                                      label: Text(entry.value),
+                                      selected: provider.smartView == entry.key,
+                                      onSelected: (_) =>
+                                          provider.setSmartView(entry.key),
+                                    ),
+                                  ),
+                              ],
+                            ),
                           ),
                         ),
                       ),

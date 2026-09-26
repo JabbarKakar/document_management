@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
 import '../../../../core/widgets/vault_page_shell.dart';
+import '../../../../core/widgets/vault_identity.dart';
 import '../providers/auth_state_provider.dart';
 
 class LockScreen extends StatefulWidget {
@@ -47,11 +48,8 @@ class _LockScreenState extends State<LockScreen> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Icon(
-              Icons.lock_rounded,
-              size: 56,
-              color: theme.colorScheme.primary,
-            ),
+            const Center(child: VaultMark(size: 120, orbits: true)),
+            const Center(child: VaultEyebrow('Your private space')),
             const SizedBox(height: 20),
             Text(
               _recovering ? 'Reset vault PIN' : 'Vault locked',

@@ -339,9 +339,9 @@ class VaultDocumentListCard extends StatelessWidget {
     return Padding(
       padding: const EdgeInsets.fromLTRB(
         AppSpacing.sm,
-        AppSpacing.xs,
+        AppSpacing.md,
         AppSpacing.xxs,
-        AppSpacing.xs,
+        AppSpacing.md,
       ),
       child: Row(
         children: [
@@ -362,18 +362,21 @@ class VaultDocumentListCard extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Stack(
-          children: [
-            VaultDocumentThumbnail(
-              key: ValueKey<String>('${document.id}|${document.filePath}'),
-              document: document,
-              height: 112,
-              expandWidth: true,
-              borderRadius: 0,
-            ),
-            if (selectionMode)
-              Positioned(top: 0, right: 0, child: _selectionBox()),
-          ],
+        Padding(
+          padding: const EdgeInsets.fromLTRB(12, 12, 12, 0),
+          child: Stack(
+            children: [
+              VaultDocumentThumbnail(
+                key: ValueKey<String>('${document.id}|${document.filePath}'),
+                document: document,
+                height: 112,
+                expandWidth: true,
+                borderRadius: 14,
+              ),
+              if (selectionMode)
+                Positioned(top: 0, right: 0, child: _selectionBox()),
+            ],
+          ),
         ),
         Expanded(
           child: Padding(
@@ -408,7 +411,9 @@ class VaultDocumentListCard extends StatelessWidget {
     final expiryUrgent = expiry != null && isExpiryUrgentRed(expiry);
     final expiryColor = expiryUrgent
         ? scheme.error
-        : AppColors.warning(scheme.brightness);
+        : expiry != null && expiry.difference(DateTime.now()).inDays <= 30
+        ? AppColors.warning(scheme.brightness)
+        : scheme.onSurfaceVariant;
     final meta = textTheme.labelMedium;
 
     return Column(
@@ -426,6 +431,13 @@ class VaultDocumentListCard extends StatelessWidget {
           runSpacing: AppSpacing.xxs,
           crossAxisAlignment: WrapCrossAlignment.center,
           children: [
+            if (document.isFavorite)
+              Icon(
+                Icons.star_rounded,
+                size: 16,
+                color: scheme.primary,
+                semanticLabel: 'Favorite',
+              ),
             _TypeBadge(label: typeLabel(document.fileType)),
             if (categoryName != null)
               Text(
@@ -511,7 +523,7 @@ class VaultDocumentListCard extends StatelessWidget {
           child: ListTile(
             contentPadding: EdgeInsets.zero,
             leading: Icon(Icons.delete_outline_rounded, color: scheme.error),
-            title: Text('Delete', style: TextStyle(color: scheme.error)),
+            title: Text('Move to Trash', style: TextStyle(color: scheme.error)),
           ),
         ),
       ],
@@ -529,7 +541,9 @@ class _TypeBadge extends StatelessWidget {
     final scheme = Theme.of(context).colorScheme;
     return DecoratedBox(
       decoration: BoxDecoration(
-        color: scheme.primaryContainer,
+        color: label == 'PDF'
+            ? scheme.tertiaryContainer
+            : scheme.primaryContainer,
         borderRadius: BorderRadius.circular(AppRadius.chip),
       ),
       child: Padding(
@@ -537,7 +551,9 @@ class _TypeBadge extends StatelessWidget {
         child: Text(
           label,
           style: Theme.of(context).textTheme.labelSmall?.copyWith(
-            color: scheme.onPrimaryContainer,
+            color: label == 'PDF'
+                ? scheme.onTertiaryContainer
+                : scheme.onPrimaryContainer,
             letterSpacing: 0.2,
           ),
         ),

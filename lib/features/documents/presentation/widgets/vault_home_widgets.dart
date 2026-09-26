@@ -52,16 +52,26 @@ class _VaultSearchFieldState extends State<VaultSearchField> {
       ),
       child: ClipRRect(
         borderRadius: AppRadius.cardBorder,
-        child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
-          child: TextField(
+        child: ValueListenableBuilder<TextEditingValue>(
+          valueListenable: widget.controller,
+          builder: (context, value, child) => TextField(
             focusNode: _focus,
             controller: widget.controller,
             onChanged: widget.onChanged,
             style: textTheme.bodyMedium,
             textInputAction: TextInputAction.search,
             decoration: InputDecoration(
-              hintText: 'Search documents, tags or extracted text',
+              hintText: 'Search your vault',
+              suffixIcon: value.text.isEmpty
+                  ? null
+                  : IconButton(
+                      tooltip: 'Clear search',
+                      onPressed: () {
+                        widget.controller.clear();
+                        widget.onChanged('');
+                      },
+                      icon: const Icon(Icons.close_rounded),
+                    ),
               filled: true,
               fillColor: AppColors.glassFill(scheme.brightness),
               prefixIcon: Icon(
@@ -531,7 +541,7 @@ class VaultEmptyState extends StatelessWidget {
             Text(
               filtered
                   ? 'Try different search words or filters.'
-                  : 'Add images, scans, or PDFs. Everything stays encrypted on this device.',
+                  : 'Add images, scans, or PDFs. Keep your important documents close.',
               textAlign: TextAlign.center,
               style: textTheme.bodyMedium?.copyWith(
                 color: scheme.onSurfaceVariant,

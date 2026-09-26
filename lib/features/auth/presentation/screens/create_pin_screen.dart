@@ -1,3 +1,4 @@
+import '../../../../core/widgets/vault_identity.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -43,11 +44,8 @@ class _CreatePinScreenState extends State<CreatePinScreen> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Icon(
-              Icons.key_rounded,
-              size: 56,
-              color: scheme.primary,
-            ),
+            const Center(child: VaultMark(size: 120, orbits: true)),
+            const Center(child: VaultEyebrow('Welcome to your vault')),
             const SizedBox(height: 20),
             Text(
               'Create your PIN',
@@ -73,10 +71,11 @@ class _CreatePinScreenState extends State<CreatePinScreen> {
                 counterText: '',
                 suffixIcon: IconButton(
                   icon: Icon(
-                    _obscurePin ? Icons.visibility_outlined : Icons.visibility_off_outlined,
+                    _obscurePin
+                        ? Icons.visibility_outlined
+                        : Icons.visibility_off_outlined,
                   ),
-                  onPressed: () =>
-                      setState(() => _obscurePin = !_obscurePin),
+                  onPressed: () => setState(() => _obscurePin = !_obscurePin),
                 ),
               ),
             ),

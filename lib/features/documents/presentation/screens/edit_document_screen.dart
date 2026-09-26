@@ -1,3 +1,4 @@
+import '../../../../core/widgets/vault_identity.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -11,7 +12,7 @@ import 'camera_scanner_screen.dart';
 class EditDocumentScreen extends StatefulWidget {
   const EditDocumentScreen({super.key, this.existing});
 
-  /// When set, screen edits metadata only (file stays the same).
+  /// Existing documents retain their file unless a replacement is chosen.
   final VaultDocument? existing;
 
   @override
@@ -188,6 +189,109 @@ class _EditDocumentScreenState extends State<EditDocumentScreen> {
     }
   }
 
+  Future<void> _scanDocument() async {
+    final result = await Navigator.of(context).push<PickedDocumentFile>(
+      MaterialPageRoute<PickedDocumentFile>(
+        builder: (_) => const CameraScannerScreen(),
+      ),
+    );
+    if (result != null && mounted) setState(() => _pickedFile = result);
+  }
+
+  Widget _fileChoices(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            if (_isEditing) ...[
+              Text(
+                'Choose a replacement only if you want to update the file.',
+                style: Theme.of(context).textTheme.bodySmall,
+              ),
+              const SizedBox(height: 16),
+            ],
+            FilledButton.tonalIcon(
+              onPressed: _scanDocument,
+              icon: const Icon(Icons.document_scanner_outlined),
+              label: Text(_isEditing ? 'Scan a replacement' : 'Scan document'),
+            ),
+            const SizedBox(height: 12),
+            LayoutBuilder(
+              builder: (context, constraints) {
+                final single = MediaQuery.textScalerOf(context).scale(16) > 24;
+                final width = single
+                    ? constraints.maxWidth
+                    : (constraints.maxWidth - 12) / 2;
+                return Wrap(
+                  spacing: 12,
+                  runSpacing: 12,
+                  children: [
+                    SizedBox(
+                      width: width,
+                      child: OutlinedButton.icon(
+                        onPressed: () => _pickFile(_picker.pickFromGallery),
+                        icon: const Icon(Icons.photo_library_outlined),
+                        label: const Text('Gallery'),
+                      ),
+                    ),
+                    SizedBox(
+                      width: width,
+                      child: OutlinedButton.icon(
+                        onPressed: () => _pickFile(_picker.captureFromCamera),
+                        icon: const Icon(Icons.photo_camera_outlined),
+                        label: const Text('Camera'),
+                      ),
+                    ),
+                  ],
+                );
+              },
+            ),
+            const SizedBox(height: 12),
+            OutlinedButton.icon(
+              onPressed: () => _pickFile(_picker.pickPdf),
+              icon: const Icon(Icons.picture_as_pdf_outlined),
+              label: const Text('Choose PDF'),
+            ),
+            if (_pickedFile != null) ...[
+              const SizedBox(height: 16),
+              Container(
+                padding: const EdgeInsets.only(left: 12),
+                decoration: BoxDecoration(
+                  color: scheme.primaryContainer,
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: Row(
+                  children: [
+                    Icon(
+                      Icons.check_circle_outline_rounded,
+                      color: scheme.primary,
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Text(
+                        _pickedFile!.fileName,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                    IconButton(
+                      tooltip: 'Remove selected file',
+                      onPressed: () => setState(() => _pickedFile = null),
+                      icon: const Icon(Icons.close_rounded),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
@@ -203,304 +307,119 @@ class _EditDocumentScreenState extends State<EditDocumentScreen> {
       appBar: AppBar(
         title: Text(_isEditing ? 'Edit document' : 'Add document'),
       ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.fromLTRB(20, 16, 20, 100),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text('Details', style: textTheme.titleMedium),
-            const SizedBox(height: 12),
-            Card(
-              child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: Column(
-                  children: [
-                    TextField(
-                      controller: _titleController,
-                      textCapitalization: TextCapitalization.sentences,
-                      decoration: const InputDecoration(labelText: 'Title'),
-                    ),
-                    if (categories.isNotEmpty) ...[
-                      const SizedBox(height: 16),
-                      DropdownButtonFormField<VaultCategory?>(
-                        key: ValueKey(_selectedCategory?.id),
-                        initialValue: _selectedCategory,
-                        items: [
-                          const DropdownMenuItem<VaultCategory?>(
-                            value: null,
-                            child: Text('No category'),
-                          ),
-                          ...categories.map(
-                            (c) => DropdownMenuItem<VaultCategory?>(
-                              value: c,
-                              child: Text(c.name),
+      body: VaultAtmosphere(
+        child: Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 760),
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.fromLTRB(20, 16, 20, 100),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const VaultEyebrow('Keep what matters'),
+                  const SizedBox(height: 8),
+                  Text(
+                    _isEditing
+                        ? 'Fine-tune the details.'
+                        : 'A little more organized.',
+                    style: textTheme.headlineSmall,
+                  ),
+                  const SizedBox(height: 24),
+                  Text('Details', style: textTheme.titleMedium),
+                  const SizedBox(height: 12),
+                  Card(
+                    child: Padding(
+                      padding: const EdgeInsets.all(16),
+                      child: Column(
+                        children: [
+                          TextField(
+                            controller: _titleController,
+                            textCapitalization: TextCapitalization.sentences,
+                            decoration: const InputDecoration(
+                              labelText: 'Title',
                             ),
                           ),
-                        ],
-                        onChanged: (value) {
-                          setState(() {
-                            _selectedCategory = value;
-                          });
-                        },
-                        decoration: const InputDecoration(
-                          labelText: 'Category',
-                        ),
-                      ),
-                    ],
-                  ],
-                ),
-              ),
-            ),
-            const SizedBox(height: 24),
-            Text('File', style: textTheme.titleMedium),
-            const SizedBox(height: 12),
-            if (_isEditing) ...[
-              Card(
-                child: Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      Row(
-                        children: [
-                          Icon(
-                            widget.existing!.fileType ==
-                                    VaultDocumentFileType.pdf
-                                ? Icons.picture_as_pdf_rounded
-                                : widget.existing!.fileType ==
-                                      VaultDocumentFileType.image
-                                ? Icons.image_outlined
-                                : Icons.insert_drive_file_outlined,
-                            color: scheme.primary,
-                            size: 28,
-                          ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: Text(
-                              'Current encrypted file stays unless you choose a replacement below.',
-                              style: textTheme.bodySmall?.copyWith(
-                                color: scheme.onSurfaceVariant,
+                          if (categories.isNotEmpty) ...[
+                            const SizedBox(height: 16),
+                            DropdownButtonFormField<VaultCategory?>(
+                              key: ValueKey(_selectedCategory?.id),
+                              initialValue: _selectedCategory,
+                              items: [
+                                const DropdownMenuItem<VaultCategory?>(
+                                  value: null,
+                                  child: Text('No category'),
+                                ),
+                                ...categories.map(
+                                  (c) => DropdownMenuItem<VaultCategory?>(
+                                    value: c,
+                                    child: Text(c.name),
+                                  ),
+                                ),
+                              ],
+                              onChanged: (value) {
+                                setState(() {
+                                  _selectedCategory = value;
+                                });
+                              },
+                              decoration: const InputDecoration(
+                                labelText: 'Category',
                               ),
                             ),
-                          ),
+                          ],
                         ],
-                      ),
-                      const SizedBox(height: 14),
-                      Row(
-                        children: [
-                          Expanded(
-                            child: OutlinedButton.icon(
-                              onPressed: () =>
-                                  _pickFile(_picker.pickFromGallery),
-                              icon: const Icon(Icons.photo_library_outlined),
-                              label: const Text('Replace from gallery'),
-                            ),
-                          ),
-                          const SizedBox(width: 10),
-                          Expanded(
-                            child: OutlinedButton.icon(
-                              onPressed: () =>
-                                  _pickFile(_picker.captureFromCamera),
-                              icon: const Icon(Icons.photo_camera_outlined),
-                              label: const Text('Replace by camera'),
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 10),
-                      OutlinedButton.icon(
-                        onPressed: () async {
-                          final result = await Navigator.of(context)
-                              .push<PickedDocumentFile>(
-                                MaterialPageRoute<PickedDocumentFile>(
-                                  builder: (_) => const CameraScannerScreen(),
-                                ),
-                              );
-                          if (result != null) {
-                            setState(() => _pickedFile = result);
-                          }
-                        },
-                        icon: const Icon(Icons.document_scanner_outlined),
-                        label: const Text('Replace by scanner'),
-                      ),
-                      const SizedBox(height: 10),
-                      OutlinedButton.icon(
-                        onPressed: () => _pickFile(_picker.pickPdf),
-                        icon: const Icon(Icons.picture_as_pdf_outlined),
-                        label: const Text('Replace with PDF'),
-                      ),
-                      if (_pickedFile != null) ...[
-                        const SizedBox(height: 14),
-                        Material(
-                          color: scheme.surfaceContainerHighest.withValues(
-                            alpha: 0.65,
-                          ),
-                          borderRadius: BorderRadius.circular(14),
-                          child: Padding(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 14,
-                              vertical: 12,
-                            ),
-                            child: Row(
-                              children: [
-                                Icon(
-                                  _pickedFile!.fileType ==
-                                          VaultDocumentFileType.pdf
-                                      ? Icons.picture_as_pdf_rounded
-                                      : Icons.image_outlined,
-                                  color: scheme.primary,
-                                ),
-                                const SizedBox(width: 10),
-                                Expanded(
-                                  child: Text(
-                                    _pickedFile!.fileName,
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
-                                ),
-                                IconButton(
-                                  tooltip: 'Cancel replacement',
-                                  onPressed: () =>
-                                      setState(() => _pickedFile = null),
-                                  icon: const Icon(Icons.close_rounded),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
-                      ],
-                    ],
-                  ),
-                ),
-              ),
-            ] else
-              Card(
-                child: Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      Row(
-                        children: [
-                          Expanded(
-                            child: OutlinedButton.icon(
-                              onPressed: () =>
-                                  _pickFile(_picker.pickFromGallery),
-                              icon: const Icon(Icons.photo_library_outlined),
-                              label: const Text('Gallery'),
-                            ),
-                          ),
-                          const SizedBox(width: 10),
-                          Expanded(
-                            child: OutlinedButton.icon(
-                              onPressed: () =>
-                                  _pickFile(_picker.captureFromCamera),
-                              icon: const Icon(Icons.photo_camera_outlined),
-                              label: const Text('Camera'),
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 10),
-                      OutlinedButton.icon(
-                        onPressed: () async {
-                          final result = await Navigator.of(context)
-                              .push<PickedDocumentFile>(
-                                MaterialPageRoute<PickedDocumentFile>(
-                                  builder: (_) => const CameraScannerScreen(),
-                                ),
-                              );
-                          if (result != null) {
-                            setState(() => _pickedFile = result);
-                          }
-                        },
-                        icon: const Icon(Icons.document_scanner_outlined),
-                        label: const Text('Scan document'),
-                      ),
-                      const SizedBox(height: 10),
-                      OutlinedButton.icon(
-                        onPressed: () => _pickFile(_picker.pickPdf),
-                        icon: const Icon(Icons.picture_as_pdf_outlined),
-                        label: const Text('Import PDF'),
-                      ),
-                      if (_pickedFile != null) ...[
-                        const SizedBox(height: 14),
-                        Material(
-                          color: scheme.surfaceContainerHighest.withValues(
-                            alpha: 0.65,
-                          ),
-                          borderRadius: BorderRadius.circular(14),
-                          child: Padding(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 14,
-                              vertical: 12,
-                            ),
-                            child: Row(
-                              children: [
-                                Icon(
-                                  _pickedFile!.fileType ==
-                                          VaultDocumentFileType.pdf
-                                      ? Icons.picture_as_pdf_rounded
-                                      : Icons.image_outlined,
-                                  color: scheme.primary,
-                                ),
-                                const SizedBox(width: 10),
-                                Expanded(
-                                  child: Text(
-                                    _pickedFile!.fileName,
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
-                      ],
-                    ],
-                  ),
-                ),
-              ),
-            const SizedBox(height: 24),
-            Text('Expiry & notes', style: textTheme.titleMedium),
-            const SizedBox(height: 12),
-            Card(
-              child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    OutlinedButton.icon(
-                      onPressed: _pickExpiryDate,
-                      icon: const Icon(Icons.event_rounded),
-                      label: Text(
-                        _expiryDate == null
-                            ? 'Expiry date (optional)'
-                            : 'Expires ${_expiryDate!.toLocal().toString().split(' ').first}',
                       ),
                     ),
-                    if (_expiryDate != null) ...[
-                      const SizedBox(height: 8),
-                      Align(
-                        alignment: Alignment.centerLeft,
-                        child: TextButton(
-                          onPressed: () => setState(() => _expiryDate = null),
-                          child: const Text('Clear expiry date'),
-                        ),
-                      ),
-                    ],
-                    const SizedBox(height: 16),
-                    TextField(
-                      controller: _notesController,
-                      maxLines: 3,
-                      textCapitalization: TextCapitalization.sentences,
-                      decoration: const InputDecoration(
-                        labelText: 'Notes (optional)',
+                  ),
+                  const SizedBox(height: 24),
+                  Text('File', style: textTheme.titleMedium),
+                  const SizedBox(height: 12),
+                  _fileChoices(context),
+                  const SizedBox(height: 24),
+                  Text('Expiry & notes', style: textTheme.titleMedium),
+                  const SizedBox(height: 12),
+                  Card(
+                    child: Padding(
+                      padding: const EdgeInsets.all(16),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          OutlinedButton.icon(
+                            onPressed: _pickExpiryDate,
+                            icon: const Icon(Icons.event_rounded),
+                            label: Text(
+                              _expiryDate == null
+                                  ? 'Expiry date (optional)'
+                                  : 'Expires ${_expiryDate!.toLocal().toString().split(' ').first}',
+                            ),
+                          ),
+                          if (_expiryDate != null) ...[
+                            const SizedBox(height: 8),
+                            Align(
+                              alignment: Alignment.centerLeft,
+                              child: TextButton(
+                                onPressed: () =>
+                                    setState(() => _expiryDate = null),
+                                child: const Text('Clear expiry date'),
+                              ),
+                            ),
+                          ],
+                          const SizedBox(height: 16),
+                          TextField(
+                            controller: _notesController,
+                            maxLines: 3,
+                            textCapitalization: TextCapitalization.sentences,
+                            decoration: const InputDecoration(
+                              labelText: 'Notes (optional)',
+                            ),
+                          ),
+                        ],
                       ),
                     ),
-                  ],
-                ),
+                  ),
+                ],
               ),
             ),
-          ],
+          ),
         ),
       ),
       bottomNavigationBar: SafeArea(

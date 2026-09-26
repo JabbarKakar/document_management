@@ -44,10 +44,14 @@ abstract final class AppTheme {
       onSecondary: isDark ? AppColors.backgroundDark : AppColors.surfaceLight,
       secondaryContainer: surfaceRaised,
       onSecondaryContainer: text,
-      tertiary: primary,
+      tertiary: isDark ? AppColors.violetDark : AppColors.violetLight,
       onTertiary: onPrimary,
-      tertiaryContainer: primaryMuted,
-      onTertiaryContainer: onPrimaryMuted,
+      tertiaryContainer: isDark
+          ? const Color(0xFF2B2446)
+          : const Color(0xFFEEE8FF),
+      onTertiaryContainer: isDark
+          ? const Color(0xFFE6DDFF)
+          : const Color(0xFF3E2E75),
       error: isDark ? AppColors.errorDark : AppColors.errorLight,
       onError: isDark ? const Color(0xFF2A0B0E) : AppColors.onPrimaryLight,
       errorContainer: isDark
@@ -72,7 +76,9 @@ abstract final class AppTheme {
       shadow: const Color(0xFF000000),
     );
 
-    final baseText = (isDark ? ThemeData.dark().textTheme : ThemeData.light().textTheme).apply(fontFamily: 'Inter');
+    final baseText =
+        (isDark ? ThemeData.dark().textTheme : ThemeData.light().textTheme)
+            .apply(fontFamily: 'Inter');
 
     TextStyle inter({
       required double size,
@@ -94,9 +100,9 @@ abstract final class AppTheme {
 
     final textTheme = baseText.copyWith(
       displaySmall: inter(
-        size: 32,
+        size: 36,
         weight: FontWeight.w600,
-        letterSpacing: -0.3,
+        letterSpacing: -1.2,
         height: 1.15,
       ),
       headlineMedium: inter(
@@ -168,7 +174,9 @@ abstract final class AppTheme {
         shadowColor: Colors.transparent,
         shape: RoundedRectangleBorder(
           borderRadius: AppRadius.cardBorder,
-          side: BorderSide(color: colorScheme.outlineVariant),
+          side: BorderSide(
+            color: colorScheme.outlineVariant.withValues(alpha: 0.65),
+          ),
         ),
         margin: EdgeInsets.zero,
         clipBehavior: Clip.antiAlias,
@@ -288,6 +296,23 @@ abstract final class AppTheme {
         selectedLabelTextStyle: textTheme.labelLarge?.copyWith(color: primary),
         unselectedLabelTextStyle: textTheme.labelLarge?.copyWith(
           color: textMuted,
+        ),
+      ),
+      navigationBarTheme: NavigationBarThemeData(
+        backgroundColor: surface,
+        elevation: 0,
+        height: 76,
+        indicatorColor: primaryMuted,
+        indicatorShape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+        ),
+        labelTextStyle: WidgetStateProperty.resolveWith(
+          (states) => textTheme.labelSmall!.copyWith(
+            color: states.contains(WidgetState.selected) ? primary : textMuted,
+            fontWeight: states.contains(WidgetState.selected)
+                ? FontWeight.w700
+                : FontWeight.w500,
+          ),
         ),
       ),
       filledButtonTheme: FilledButtonThemeData(

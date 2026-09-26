@@ -54,6 +54,7 @@ class DocumentListProvider extends ChangeNotifier {
 
   bool get isLoading => _isLoading;
   List<VaultDocument> get documents => _documents;
+  List<VaultDocument> get allDocuments => List.unmodifiable(_allDocuments);
   String get searchQuery => _currentQuery;
   int? get categoryFilter => _currentCategoryFilter;
   VaultDocumentSort get sortMode => _sortMode;

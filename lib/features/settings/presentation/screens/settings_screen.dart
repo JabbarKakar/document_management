@@ -1,3 +1,4 @@
+import '../../../../core/widgets/vault_identity.dart';
 import 'package:flutter/material.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:provider/provider.dart';
@@ -113,211 +114,273 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
     return Scaffold(
       appBar: AppBar(title: const Text('Settings')),
-      body: ListView(
-        children: [
-          const _SectionHeader('Appearance'),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(20, 4, 20, 8),
-            child: SegmentedButton<ThemeMode>(
-              segments: const [
-                ButtonSegment<ThemeMode>(
-                  value: ThemeMode.system,
-                  label: Text('Auto'),
-                  icon: Icon(Icons.brightness_auto_outlined, size: 18),
-                ),
-                ButtonSegment<ThemeMode>(
-                  value: ThemeMode.light,
-                  label: Text('Light'),
-                  icon: Icon(Icons.light_mode_outlined, size: 18),
-                ),
-                ButtonSegment<ThemeMode>(
-                  value: ThemeMode.dark,
-                  label: Text('Dark'),
-                  icon: Icon(Icons.dark_mode_outlined, size: 18),
-                ),
-              ],
-              emptySelectionAllowed: false,
-              showSelectedIcon: false,
-              selected: {themeCtrl.themeMode},
-              onSelectionChanged: (Set<ThemeMode> next) {
-                themeCtrl.setThemeMode(next.first);
-              },
-            ),
-          ),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
-            child: Text(
-              '“Auto” follows your device light or dark mode.',
-              style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                color: Theme.of(context).colorScheme.onSurfaceVariant,
-              ),
-            ),
-          ),
-          const _SectionHeader('Reminders'),
-          ListTile(
-            leading: const Icon(Icons.notifications_active_outlined),
-            title: const Text('Check permission and retry reminders'),
-            onTap: () async {
-              try {
-                final allowed = await context
-                    .read<ExpiryReminderService>()
-                    .requestPermissionAndSync();
-                if (context.mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text(
-                        allowed
-                            ? 'Notification permission is enabled. Reminder schedules refreshed.'
-                            : 'Notifications are disabled. Enable them in your device settings.',
+      body: VaultAtmosphere(
+        child: Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 760),
+            child: ListView(
+              padding: const EdgeInsets.fromLTRB(20, 8, 20, 32),
+              children: _groupSections([
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 16),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const VaultEyebrow('Make it yours'),
+                      const SizedBox(height: 8),
+                      Text(
+                        'Your vault. Your rules.',
+                        style: Theme.of(context).textTheme.headlineSmall,
                       ),
-                    ),
-                  );
-                }
-              } catch (_) {
-                if (context.mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text(
-                        'Could not refresh reminders. Please retry.',
-                      ),
-                    ),
-                  );
-                }
-              }
-            },
-          ),
-          SwitchListTile(
-            secondary: const Icon(Icons.notifications_outlined),
-            title: const Text('Expiry reminders'),
-            subtitle: const Text(
-              'Notify at 30, 15, and 7 days before a document expiry date.',
-            ),
-            value: _expiryReminders,
-            onChanged: _setExpiry,
-          ),
-          SwitchListTile(
-            secondary: const Icon(Icons.privacy_tip_outlined),
-            title: const Text('Private notifications'),
-            subtitle: const Text(
-              'Hide document titles. Document images are never attached.',
-            ),
-            value: _privateNotifications,
-            onChanged: (value) async {
-              final storage = context.read<SecureStorageService>();
-              final reminders = context.read<ExpiryReminderService>();
-              await storage.setPrivateNotifications(value);
-              if (mounted) setState(() => _privateNotifications = value);
-              try {
-                await reminders.syncAll();
-              } catch (_) {
-                if (context.mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text(
-                        'Preference saved. Some reminders could not be updated. Retry from Settings.',
-                      ),
-                    ),
-                  );
-                }
-              }
-            },
-          ),
-          const _SectionHeader('Organization'),
-          ListTile(
-            leading: const Icon(Icons.health_and_safety_outlined),
-            title: const Text('Vault health'),
-            subtitle: const Text('Verify files and upgrade older encryption'),
-            onTap: () => Navigator.of(context).push(
-              MaterialPageRoute<void>(
-                builder: (_) => const VaultMaintenanceScreen(),
-              ),
-            ),
-          ),
-          ListTile(
-            leading: const Icon(Icons.delete_outline_rounded),
-            title: const Text('Trash'),
-            subtitle: const Text(
-              'Restore documents deleted in the last 30 days',
-            ),
-            trailing: const Icon(Icons.chevron_right),
-            onTap: () => Navigator.of(context).push(
-              MaterialPageRoute<void>(builder: (_) => const TrashScreen()),
-            ),
-          ),
-          ListTile(
-            leading: const Icon(Icons.category_outlined),
-            title: const Text('Categories'),
-            subtitle: const Text('Create, rename, or delete categories'),
-            trailing: const Icon(Icons.chevron_right),
-            onTap: () {
-              Navigator.of(context).push(
-                MaterialPageRoute<void>(
-                  builder: (ctx) => ChangeNotifierProvider.value(
-                    value: context.read<CategoryListProvider>(),
-                    child: const CategoryManagementScreen(),
+                    ],
                   ),
                 ),
-              );
-            },
-          ),
-          const _SectionHeader('Security'),
-          ListTile(
-            leading: const Icon(Icons.backup_outlined),
-            title: const Text('Backup & recovery'),
-            subtitle: const Text(
-              'Encrypted backup for a lost or replaced device',
-            ),
-            trailing: const Icon(Icons.chevron_right),
-            onTap: () => Navigator.of(context).push(
-              MaterialPageRoute<void>(
-                builder: (_) => const RecoveryBackupScreen(),
-              ),
-            ),
-          ),
-          ListTile(
-            leading: const Icon(Icons.timer_outlined),
-            title: const Text('Auto-lock timeout'),
-            subtitle: Text(
-              _lockOptions[_lockTimeoutSeconds] ?? '$_lockTimeoutSeconds s',
-            ),
-            trailing: const Icon(Icons.chevron_right),
-            onTap: _pickLockTimeout,
-          ),
-          ListTile(
-            leading: const Icon(Icons.phonelink_lock_rounded),
-            title: const Text('Device unlock and PIN recovery'),
-            subtitle: Text(
-              auth.deviceAuthAvailable
-                  ? 'Your device passcode, fingerprint, or Face ID can unlock the vault independently. Use Forgot PIN on the lock screen to reset it.'
-                  : 'Set up a device passcode in your device settings to enable recovery.',
-            ),
-          ),
-          ListTile(
-            leading: const Icon(Icons.pin_outlined),
-            title: const Text('Change PIN'),
-            trailing: const Icon(Icons.chevron_right),
-            onTap: () {
-              Navigator.of(context).push(
-                MaterialPageRoute<void>(
-                  builder: (_) => ChangeNotifierProvider.value(
-                    value: context.read<AuthStateProvider>(),
-                    child: const ChangePinScreen(),
+                const _SectionHeader('Appearance'),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 4, 20, 8),
+                  child: SegmentedButton<ThemeMode>(
+                    segments: const [
+                      ButtonSegment<ThemeMode>(
+                        value: ThemeMode.system,
+                        label: Text('Auto'),
+                        icon: Icon(Icons.brightness_auto_outlined, size: 18),
+                      ),
+                      ButtonSegment<ThemeMode>(
+                        value: ThemeMode.light,
+                        label: Text('Light'),
+                        icon: Icon(Icons.light_mode_outlined, size: 18),
+                      ),
+                      ButtonSegment<ThemeMode>(
+                        value: ThemeMode.dark,
+                        label: Text('Dark'),
+                        icon: Icon(Icons.dark_mode_outlined, size: 18),
+                      ),
+                    ],
+                    emptySelectionAllowed: false,
+                    showSelectedIcon: false,
+                    selected: {themeCtrl.themeMode},
+                    onSelectionChanged: (Set<ThemeMode> next) {
+                      themeCtrl.setThemeMode(next.first);
+                    },
                   ),
                 ),
-              );
-            },
-          ),
-          const _SectionHeader('About'),
-          ListTile(
-            leading: const Icon(Icons.info_outline),
-            title: const Text('Document vault'),
-            subtitle: Text(
-              _versionLabel.isEmpty ? '…' : 'Version $_versionLabel',
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
+                  child: Text(
+                    '“Auto” follows your device light or dark mode.',
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                ),
+                const _SectionHeader('Reminders'),
+                ListTile(
+                  leading: const Icon(Icons.notifications_active_outlined),
+                  title: const Text('Check permission and retry reminders'),
+                  onTap: () async {
+                    try {
+                      final allowed = await context
+                          .read<ExpiryReminderService>()
+                          .requestPermissionAndSync();
+                      if (context.mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text(
+                              allowed
+                                  ? 'Notification permission is enabled. Reminder schedules refreshed.'
+                                  : 'Notifications are disabled. Enable them in your device settings.',
+                            ),
+                          ),
+                        );
+                      }
+                    } catch (_) {
+                      if (context.mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text(
+                              'Could not refresh reminders. Please retry.',
+                            ),
+                          ),
+                        );
+                      }
+                    }
+                  },
+                ),
+                SwitchListTile(
+                  secondary: const Icon(Icons.notifications_outlined),
+                  title: const Text('Expiry reminders'),
+                  subtitle: const Text(
+                    'Notify at 30, 15, and 7 days before a document expiry date.',
+                  ),
+                  value: _expiryReminders,
+                  onChanged: _setExpiry,
+                ),
+                SwitchListTile(
+                  secondary: const Icon(Icons.privacy_tip_outlined),
+                  title: const Text('Private notifications'),
+                  subtitle: const Text(
+                    'Hide document titles. Document images are never attached.',
+                  ),
+                  value: _privateNotifications,
+                  onChanged: (value) async {
+                    final storage = context.read<SecureStorageService>();
+                    final reminders = context.read<ExpiryReminderService>();
+                    await storage.setPrivateNotifications(value);
+                    if (mounted) setState(() => _privateNotifications = value);
+                    try {
+                      await reminders.syncAll();
+                    } catch (_) {
+                      if (context.mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text(
+                              'Preference saved. Some reminders could not be updated. Retry from Settings.',
+                            ),
+                          ),
+                        );
+                      }
+                    }
+                  },
+                ),
+                const _SectionHeader('Organization'),
+                ListTile(
+                  leading: const Icon(Icons.health_and_safety_outlined),
+                  title: const Text('Vault health'),
+                  subtitle: const Text(
+                    'Verify files and upgrade older encryption',
+                  ),
+                  onTap: () => Navigator.of(context).push(
+                    MaterialPageRoute<void>(
+                      builder: (_) => const VaultMaintenanceScreen(),
+                    ),
+                  ),
+                ),
+                ListTile(
+                  leading: const Icon(Icons.delete_outline_rounded),
+                  title: const Text('Trash'),
+                  subtitle: const Text(
+                    'Restore documents deleted in the last 30 days',
+                  ),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: () => Navigator.of(context).push(
+                    MaterialPageRoute<void>(
+                      builder: (_) => const TrashScreen(),
+                    ),
+                  ),
+                ),
+                ListTile(
+                  leading: const Icon(Icons.category_outlined),
+                  title: const Text('Categories'),
+                  subtitle: const Text('Create, rename, or delete categories'),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: () {
+                    Navigator.of(context).push(
+                      MaterialPageRoute<void>(
+                        builder: (ctx) => ChangeNotifierProvider.value(
+                          value: context.read<CategoryListProvider>(),
+                          child: const CategoryManagementScreen(),
+                        ),
+                      ),
+                    );
+                  },
+                ),
+                const _SectionHeader('Security'),
+                ListTile(
+                  leading: const Icon(Icons.backup_outlined),
+                  title: const Text('Backup & recovery'),
+                  subtitle: const Text(
+                    'Encrypted backup for a lost or replaced device',
+                  ),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: () => Navigator.of(context).push(
+                    MaterialPageRoute<void>(
+                      builder: (_) => const RecoveryBackupScreen(),
+                    ),
+                  ),
+                ),
+                ListTile(
+                  leading: const Icon(Icons.timer_outlined),
+                  title: const Text('Auto-lock timeout'),
+                  subtitle: Text(
+                    _lockOptions[_lockTimeoutSeconds] ??
+                        '$_lockTimeoutSeconds s',
+                  ),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: _pickLockTimeout,
+                ),
+                ListTile(
+                  leading: const Icon(Icons.phonelink_lock_rounded),
+                  title: const Text('Device unlock and PIN recovery'),
+                  subtitle: Text(
+                    auth.deviceAuthAvailable
+                        ? 'Your device passcode, fingerprint, or Face ID can unlock the vault independently. Use Forgot PIN on the lock screen to reset it.'
+                        : 'Set up a device passcode in your device settings to enable recovery.',
+                  ),
+                ),
+                ListTile(
+                  leading: const Icon(Icons.pin_outlined),
+                  title: const Text('Change PIN'),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: () {
+                    Navigator.of(context).push(
+                      MaterialPageRoute<void>(
+                        builder: (_) => ChangeNotifierProvider.value(
+                          value: context.read<AuthStateProvider>(),
+                          child: const ChangePinScreen(),
+                        ),
+                      ),
+                    );
+                  },
+                ),
+                const _SectionHeader('About'),
+                ListTile(
+                  leading: const Icon(Icons.info_outline),
+                  title: const Text('Document vault'),
+                  subtitle: Text(
+                    _versionLabel.isEmpty ? '…' : 'Version $_versionLabel',
+                  ),
+                ),
+              ]),
             ),
           ),
-        ],
+        ),
       ),
     );
+  }
+
+  List<Widget> _groupSections(List<Widget> items) {
+    final output = <Widget>[];
+    var group = <Widget>[];
+    void flush() {
+      if (group.isEmpty) return;
+      output.add(
+        Card(
+          margin: EdgeInsets.zero,
+          clipBehavior: Clip.antiAlias,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 8),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: group,
+            ),
+          ),
+        ),
+      );
+      group = <Widget>[];
+    }
+
+    for (final item in items) {
+      if (item is _SectionHeader) {
+        flush();
+        output.add(item);
+      } else if (output.isEmpty && group.isEmpty) {
+        output.add(item);
+      } else {
+        group.add(item);
+      }
+    }
+    flush();
+    return output;
   }
 }
 
